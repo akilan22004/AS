@@ -1,6 +1,11 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() || '';
+// Strip any accidental path suffixes (e.g. /rest/v1, /rest/v1/) that some
+// users copy from the Supabase dashboard API URL.  The supabase-js SDK
+// internally appends those paths itself; if they are already present the SDK
+// produces duplicated paths like /rest/v1/rest/v1 → PGRST125 404 errors.
+const _rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() || '';
+const supabaseUrl = _rawSupabaseUrl.replace(/\/(rest\/v1|auth\/v1|storage\/v1|realtime\/v1)\/?$/, '').replace(/\/+$/, '');
 const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim()
   || import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
   || '';
