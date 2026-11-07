@@ -4,7 +4,30 @@ import { supabase, getSupabaseAuthorizationHeader } from './supabase';
 const configuredApiOrigin = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') || '';
 const API_BASE = `${configuredApiOrigin}/api`;
 
+function assertProductionApiConfigured(): void {
+  if (!import.meta.env.DEV && !configuredApiOrigin) {
+    throw new Error(
+      'This Vercel deployment serves the frontend only. Configure VITE_API_BASE_URL with the origin of a deployed API before using API fallback routes.'
+    );
+  }
+}
+
+function surfaceSupabaseError(
+  operation: string,
+  error: { message: string; code?: string }
+): void {
+  if (!import.meta.env.DEV && !configuredApiOrigin) {
+    const code = error.code ? ` (${error.code})` : '';
+    throw new Error(`Supabase ${operation} failed${code}: ${error.message}`);
+  }
+}
+
+function preserveProductionError(error: unknown): void {
+  if (!import.meta.env.DEV && !configuredApiOrigin) throw error;
+}
+
 async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
+  assertProductionApiConfigured();
   const headers = new Headers(options.headers);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   for (const [name, value] of Object.entries(await getSupabaseAuthorizationHeader())) {
@@ -24,6 +47,7 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> 
 }
 
 async function fetchFormData<T>(url: string, body: FormData, method: 'POST' | 'PUT'): Promise<T> {
+  assertProductionApiConfigured();
   const headers = await getSupabaseAuthorizationHeader();
   const res = await fetch(url, {
     method,
@@ -146,10 +170,12 @@ export const api = {
           .eq('is_visible', true)
           .order('display_order', { ascending: true });
 
-        if (!error && data && data.length > 0) {
+        if (error) surfaceSupabaseError('loading categories', error);
+        if (!error && data) {
           return data.map(mapSupabaseCategory);
         }
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback to API proxy
       }
     }
@@ -164,10 +190,12 @@ export const api = {
           .select('*')
           .order('display_order', { ascending: true });
 
-        if (!error && data && data.length > 0) {
+        if (error) surfaceSupabaseError('loading admin categories', error);
+        if (!error && data) {
           return data.map(mapSupabaseCategory);
         }
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback to API proxy
       }
     }
@@ -190,10 +218,12 @@ export const api = {
           .select()
           .single();
 
+        if (error) surfaceSupabaseError('creating category', error);
         if (!error && data) {
           return mapSupabaseCategory(data);
         }
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback
       }
     }
@@ -222,10 +252,12 @@ export const api = {
           .select()
           .single();
 
+        if (error) surfaceSupabaseError('updating category', error);
         if (!error && data) {
           return mapSupabaseCategory(data);
         }
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback
       }
     }
@@ -239,8 +271,10 @@ export const api = {
     if (supabase) {
       try {
         const { error } = await supabase.from('categories').delete().eq('id', id);
+        if (error) surfaceSupabaseError('deleting category', error);
         if (!error) return;
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback
       }
     }
@@ -267,7 +301,8 @@ export const api = {
         }
         if (params?.category) {
           // Find category id by slug
-          const { data: catData } = await supabase.from('categories').select('id').eq('slug', params.category).maybeSingle();
+          const { data: catData, error: categoryError } = await supabase.from('categories').select('id').eq('slug', params.category).maybeSingle();
+          if (categoryError) surfaceSupabaseError('looking up a product category', categoryError);
           if (catData?.id) {
             query = query.eq('category_id', catData.id);
           }
@@ -278,13 +313,15 @@ export const api = {
         }
 
         const { data, error, count } = await query;
-        if (!error && data && data.length > 0) {
+        if (error) surfaceSupabaseError('loading products', error);
+        if (!error && data) {
           return {
             items: data.map(mapSupabaseProduct),
             total: count ?? data.length,
           };
         }
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback to API proxy
       }
     }
@@ -310,10 +347,12 @@ export const api = {
           .eq('is_featured', true)
           .order('created_at', { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (error) surfaceSupabaseError('loading featured products', error);
+        if (!error && data) {
           return data.map(mapSupabaseProduct);
         }
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback
       }
     }
@@ -334,10 +373,11 @@ export const api = {
           .eq('is_published', true)
           .single();
 
+        if (error) surfaceSupabaseError('loading a product', error);
         if (!error && product) {
           const mapped = mapSupabaseProduct(product);
           // Fetch related
-          const { data: relatedData } = await supabase
+          const { data: relatedData, error: relatedError } = await supabase
             .from('products')
             .select(`
               *,
@@ -349,10 +389,12 @@ export const api = {
             .eq('is_published', true)
             .limit(4);
 
+          if (relatedError) surfaceSupabaseError('loading related products', relatedError);
           const related = (relatedData || []).map(mapSupabaseProduct);
           return { product: mapped, related };
         }
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback
       }
     }
@@ -363,13 +405,17 @@ export const api = {
   getPublicSettings: async (): Promise<Record<string, string>> => {
     if (supabase) {
       try {
-        const { data, error } = await supabase.from('website_settings').select('key, value');
-        if (!error && data && data.length > 0) {
+        const { data, error } = await supabase.rpc('get_public_website_settings');
+        if (error) surfaceSupabaseError('loading public website settings', error);
+        if (!error && data) {
           const res: Record<string, string> = {};
-          data.forEach(item => { res[item.key] = item.value; });
+          data.forEach((item: { key: string; value: string }) => {
+            res[item.key] = item.value;
+          });
           return res;
         }
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback
       }
     }
@@ -401,6 +447,9 @@ export const api = {
           supabase.from('products').select('*, category:categories(id, name, slug), images:product_images(*)').order('created_at', { ascending: false }).limit(5),
         ]);
 
+        const queryError = pCount.error || pubCount.error || draftCount.error ||
+          cCount.error || iCount.error || recentRes.error;
+        if (queryError) surfaceSupabaseError('loading admin dashboard statistics', queryError);
         if (pCount.count !== null && !pCount.error) {
           return {
             totalProducts: pCount.count ?? 0,
@@ -412,7 +461,8 @@ export const api = {
             recentProducts: (recentRes.data || []).map(mapSupabaseProduct),
           };
         }
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback
       }
     }
@@ -432,13 +482,15 @@ export const api = {
           `, { count: 'exact' })
           .order('created_at', { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (error) surfaceSupabaseError('loading admin products', error);
+        if (!error && data) {
           return {
             items: data.map(mapSupabaseProduct),
             total: count ?? data.length,
           };
         }
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback
       }
     }
@@ -458,10 +510,12 @@ export const api = {
           .eq('id', id)
           .single();
 
+        if (error) surfaceSupabaseError('loading an admin product', error);
         if (!error && data) {
           return mapSupabaseProduct(data);
         }
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback
       }
     }
@@ -469,6 +523,7 @@ export const api = {
   },
 
   createProduct: async (formData: FormData): Promise<Product> => {
+    let supabaseProductCreated = false;
     if (supabase) {
       try {
         const name = String(formData.get('name') || '').trim();
@@ -507,8 +562,10 @@ export const api = {
           .single();
 
         if (prodErr) {
+          surfaceSupabaseError('creating product', prodErr);
           console.warn('[Supabase] createProduct error, falling back to local API:', prodErr.message);
         } else if (newProd) {
+          supabaseProductCreated = true;
           // 2. Upload images to Supabase Storage 'furniture_image'
           const files = formData.getAll('images') as File[];
           for (let i = 0; i < files.length; i++) {
@@ -526,18 +583,20 @@ export const api = {
               }
 
               if (storageData) {
-                await supabase.from('product_images').insert({
+                const { error: imageInsertError } = await supabase.from('product_images').insert({
                   product_id: newProd.id,
                   file_path: storageData.path,
                   display_order: i,
                   is_primary: i === 0,
                 });
+                if (imageInsertError) throw imageInsertError;
               }
             }
           }
           return api.getAdminProduct(newProd.id);
         }
       } catch (err) {
+        if (supabaseProductCreated) throw err;
         console.warn('[Supabase] createProduct caught error, falling back to local API:', err);
       }
     }
@@ -583,18 +642,20 @@ export const api = {
               }
 
               if (storageData) {
-                await supabase.from('product_images').insert({
+                const { error: imageInsertError } = await supabase.from('product_images').insert({
                   product_id: id,
                   file_path: storageData.path,
                   display_order: 10 + i,
                   is_primary: i === 0,
                 });
+                if (imageInsertError) throw imageInsertError;
               }
             }
           }
         }
         return api.getAdminProduct(id);
-      } catch {
+      } catch (error) {
+        preserveProductionError(error);
         // Fallback
       }
     }
