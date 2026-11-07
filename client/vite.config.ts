@@ -1,19 +1,22 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  const envDir = resolve(import.meta.dirname, '..');
-  const env = loadEnv(mode, envDir, '');
+  const rootDir = resolve(__dirname, '..');
+  const env = { ...loadEnv(mode, rootDir, ''), ...loadEnv(mode, __dirname, '') };
   const apiProxyTarget = env.VITE_DEV_API_PROXY_TARGET || 'http://localhost:3001';
 
   return {
-    envDir,
     plugins: [react()],
     resolve: {
       alias: {
-        '@': resolve(import.meta.dirname, './src'),
+        '@': resolve(__dirname, './src'),
       },
     },
     build: {
