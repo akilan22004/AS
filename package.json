@@ -1,0 +1,28 @@
+{
+  "name": "annamalai-furniture",
+  "version": "1.0.0",
+  "description": "Annamalai Furniture — Premium Mobile-First Furniture Catalogue",
+  "scripts": {
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "seed": "cd server && npx ts-node prisma/seed.ts",
+    "db:push": "cd server && npx prisma db push",
+    "setup:admin": "cd server && npx ts-node scripts/setup-admin.ts",
+    "supabase:enroll-admin-mfa": "cd server && node scripts/enroll-supabase-admin-mfa.cjs",
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "build:client": "npm --prefix client run build",
+    "build:server": "npm --prefix server run build",
+    "build:all": "npm --prefix server run build && npm --prefix client run build",
+    "test:security": "npm --prefix server run test:security && npm --prefix server run test:security-e2e",
+    "test:e2e": "npm --prefix server run test:e2e && npm --prefix server run test:admin-e2e",
+    "supabase:db:push": "supabase db push",
+    "dev": "concurrently \"npm run server\" \"npm run client\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0"
+  }
+}

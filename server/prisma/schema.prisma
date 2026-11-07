@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model AdminUser {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String   @unique
+  password  String
+  totpSecret String?
+  totpEnabled Boolean @default(false)
+  totpLastUsedStep Int?
+  role      String   @default("admin")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  auditLogs AdminAuditLog[]
+}
+
+model Category {
+  id           String    @id @default(cuid())
+  name         String    @unique
+  slug         String    @unique
+  description  String?
+  coverImage   String?
+  displayOrder Int       @default(0)
+  isVisible    Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  products     Product[]
+}
+
+model Product {
+  id             String         @id @default(cuid())
+  name           String
+  modelCode      String         @unique
+  slug           String         @unique
+  categoryId     String
+  description    String?
+  material       String?
+  length         Float?
+  width          Float?
+  height         Float?
+  dimensionUnit  String?        @default("cm")
+  specifications String?
+  isFeatured     Boolean        @default(false)
+  isPublished    Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  category       Category       @relation(fields: [categoryId], references: [id])
+  images         ProductImage[]
+}
+
+model ProductImage {
+  id           String   @id @default(cuid())
+  productId    String
+  filePath     String
+  thumbPath    String?
+  altText      String?
+  displayOrder Int      @default(0)
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model PromotionalMedia {
+  id           String   @id @default(cuid())
+  mediaType    String   @default("image")
+  filePath     String
+  posterPath   String?
+  title        String?
+  displayOrder Int      @default(0)
+  isPublished  Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model WebsiteSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model AdminAuditLog {
+  id        String    @id @default(cuid())
+  adminId   String
+  action    String
+  resource  String
+  metadata  String?
+  createdAt DateTime  @default(now())
+  admin     AdminUser @relation(fields: [adminId], references: [id])
+}

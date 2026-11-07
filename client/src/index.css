@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-ivory: #F7F3EC;
+    --color-walnut: #493326;
+    --color-espresso: #241B16;
+    --color-oak: #C8A77D;
+    --color-gold: #B69764;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-ivory);
+    color: var(--color-espresso);
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  img {
+    image-rendering: auto;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+
+  *:focus-visible {
+    outline: 2px solid #B69764;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F7F3EC;
+}
+::-webkit-scrollbar-thumb {
+  background: #C8A77D;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #B69764;
+}
+
+/* Hide scrollbar for clean horizontal scrolls */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Wood texture background utilities */
+.bg-wood-dark {
+  background-color: #241B16;
+  background-image: radial-gradient(circle at 50% 0%, rgba(73, 51, 38, 0.4) 0%, rgba(36, 27, 22, 0.95) 100%);
+}
+
+.bg-wood-walnut {
+  background-color: #493326;
+  background-image: linear-gradient(135deg, rgba(94, 67, 51, 0.8) 0%, rgba(56, 37, 28, 0.95) 100%);
+}
+
+.bg-ivory-gradient {
+  background: linear-gradient(180deg, #FBF8F2 0%, #F3EDE3 100%);
+}
+
+/* Gold border accent */
+.border-gold-subtle {
+  border-color: rgba(182, 151, 100, 0.35);
+}
+
+/* S-Curve divider styling */
+.wave-top-ivory {
+  position: relative;
+}
+.wave-top-ivory::before {
+  content: "";
+  position: absolute;
+  top: -24px;
+  left: 0;
+  width: 100%;
+  height: 25px;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  pointer-events: none;
+}
+
+/* Premium card hover effect */
+.card-hover {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(36, 27, 22, 0.12);
+}
+
+/* Image zoom on hover */
+.img-zoom {
+  transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  will-change: transform;
+}
+.img-zoom:hover {
+  transform: scale(1.06);
+}
+
+/* Fade in animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: fadeInUp 0.4s ease forwards;
+}
+
+/* Shimmer loading effect */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #EDE6DA 25%, #F5EFE6 50%, #EDE6DA 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+/* Gold underline accent */
+.gold-underline {
+  position: relative;
+}
+.gold-underline::after {
+  content: "";
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  width: 2rem;
+  height: 1.5px;
+  background: #B69764;
+}
+
+/* Button press effect */
+.btn-press {
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.btn-press:active {
+  transform: scale(0.97);
+  box-shadow: 0 1px 4px rgba(36, 27, 22, 0.15);
+}
+
+/* Product card premium */
+.product-card {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.product-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(36, 27, 22, 0.1);
+}
+
+/* Gallery thumbnail selected ring */
+.thumb-active {
+  box-shadow: 0 0 0 2px #B69764;
+}
+
+/* Enquiry banner pulse */
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(182, 151, 100, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(182, 151, 100, 0); }
+}
+.whatsapp-pulse {
+  animation: pulse-gold 2.5s infinite;
+}

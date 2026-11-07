@@ -1,0 +1,17 @@
+project_id = "annamalai-furniture"
+
+[api]
+enabled = true
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173/**"]
+
+[auth.mfa]
+max_enrolled_factors = 2
+totp_enroll_enabled = true
+totp_verify_enabled = true
