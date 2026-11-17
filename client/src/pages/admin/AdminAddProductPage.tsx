@@ -62,7 +62,7 @@ export const AdminAddProductPage: React.FC = () => {
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['categories'],
-    queryFn: api.getCategories,
+    queryFn: api.getAdminCategories,
   });
 
   useEffect(() => {

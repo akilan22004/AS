@@ -4,26 +4,61 @@ import { supabase, getSupabaseAuthorizationHeader } from './supabase';
 const configuredApiOrigin = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') || '';
 const API_BASE = `${configuredApiOrigin}/api`;
 
+const hasBackendApi = Boolean(configuredApiOrigin);
+
 function assertProductionApiConfigured(): void {
-  if (!import.meta.env.DEV && !configuredApiOrigin) {
+  if (!hasBackendApi) {
     throw new Error(
-      'This Vercel deployment serves the frontend only. Configure VITE_API_BASE_URL with the origin of a deployed API before using API fallback routes.'
+      'This Vercel deployment serves the frontend only. No VITE_API_BASE_URL configured.'
     );
   }
 }
 
+// Always throws — ensures Supabase errors surface immediately instead of
+// falling through to the backend fetch which does not exist on Vercel.
 function surfaceSupabaseError(
   operation: string,
   error: { message: string; code?: string }
-): void {
-  if (!import.meta.env.DEV && !configuredApiOrigin) {
-    const code = error.code ? ` (${error.code})` : '';
-    throw new Error(`Supabase ${operation} failed${code}: ${error.message}`);
-  }
+): never {
+  const code = error.code ? ` (${error.code})` : '';
+  throw new Error(`Supabase ${operation} failed${code}: ${error.message}`);
 }
 
-function preserveProductionError(error: unknown): void {
-  if (!import.meta.env.DEV && !configuredApiOrigin) throw error;
+// Always re-throws — prevents silent swallow-and-fallback in production.
+function preserveProductionError(error: unknown): never {
+  throw error;
+}
+
+async function readApiResponse<T>(res: Response, url: string, method: string): Promise<T> {
+  const responseText = await res.text();
+  let responseBody: {
+    success?: boolean;
+    data?: T;
+    error?: string;
+    message?: string;
+  } | null = null;
+
+  if (responseText) {
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      responseBody = null;
+    }
+  }
+
+  if (!res.ok) {
+    const detail = responseBody?.error || responseBody?.message;
+    const responseType = res.headers.get('content-type') || 'unknown content type';
+    throw new Error(
+      `${method} ${url} returned HTTP ${res.status}${detail ? `: ${detail}` : ` with a non-JSON response (${responseType})`}`
+    );
+  }
+
+  if (!responseBody || responseBody.success !== true) {
+    throw new Error(`${method} ${url} returned an invalid or unsuccessful API response.`);
+  }
+
+  return responseBody.data as T;
 }
 
 async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -38,12 +73,7 @@ async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> 
     credentials: 'include',
     headers,
   });
-
-  const data = await res.json().catch(() => null);
-  if (!res.ok || !data.success) {
-    throw new Error(data?.error || data?.message || `Request failed with HTTP ${res.status}`);
-  }
-  return data.data;
+  return readApiResponse<T>(res, url, options.method || 'GET');
 }
 
 async function fetchFormData<T>(url: string, body: FormData, method: 'POST' | 'PUT'): Promise<T> {
@@ -55,11 +85,7 @@ async function fetchFormData<T>(url: string, body: FormData, method: 'POST' | 'P
     headers,
     body,
   });
-  const data = await res.json().catch(() => null);
-  if (!res.ok || !data?.success) {
-    throw new Error(data?.error || `Request failed with HTTP ${res.status}`);
-  }
-  return data.data;
+  return readApiResponse<T>(res, url, method);
 }
 
 function extractStoragePath(filePath: string | null | undefined): string {
@@ -405,8 +431,15 @@ export const api = {
   getPublicSettings: async (): Promise<Record<string, string>> => {
     if (supabase) {
       try {
-        const { data, error } = await supabase.rpc('get_public_website_settings');
-        if (error) surfaceSupabaseError('loading public website settings', error);
+        const { data, error } = await supabase
+          .from('website_settings')
+          .select('key, value');
+        // Gracefully return empty object if table doesn't exist yet
+        if (error) {
+          const ignoredCodes = ['PGRST204', 'PGRST205', '42P01'];
+          if (ignoredCodes.includes(error.code || '')) return {};
+          surfaceSupabaseError('loading public website settings', error);
+        }
         if (!error && data) {
           const res: Record<string, string> = {};
           data.forEach((item: { key: string; value: string }) => {
@@ -415,10 +448,12 @@ export const api = {
           return res;
         }
       } catch (error) {
-        preserveProductionError(error);
-        // Fallback
+        // Non-critical — settings just won't load
+        console.warn('[api] getPublicSettings error (non-fatal):', error);
+        return {};
       }
     }
+    if (!hasBackendApi) return {};
     return fetchJson<Record<string, string>>(`${API_BASE}/settings/public`);
   },
 
@@ -427,10 +462,15 @@ export const api = {
     if (supabase) {
       await supabase.auth.signOut().catch(() => {});
     }
-    await fetchJson<void>(`${API_BASE}/auth/logout`, { method: 'POST' }).catch(() => {});
+    if (hasBackendApi) {
+      await fetchJson<void>(`${API_BASE}/auth/logout`, { method: 'POST' }).catch(() => {});
+    }
   },
 
   getMe: async (): Promise<AdminUser> => {
+    if (!hasBackendApi) {
+      throw new Error('getMe() requires a backend API (VITE_API_BASE_URL not configured).');
+    }
     return fetchJson<AdminUser>(`${API_BASE}/auth/me`);
   },
 
@@ -563,7 +603,6 @@ export const api = {
 
         if (prodErr) {
           surfaceSupabaseError('creating product', prodErr);
-          console.warn('[Supabase] createProduct error, falling back to local API:', prodErr.message);
         } else if (newProd) {
           supabaseProductCreated = true;
           // 2. Upload images to Supabase Storage 'furniture_image'
