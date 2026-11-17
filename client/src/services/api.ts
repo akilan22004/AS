@@ -190,18 +190,6 @@ function mapSupabaseProduct(p: any): Product {
   };
 }
 
-function mapSupabaseCategory(c: any): Category {
-  return {
-    id: c.id,
-    name: c.name,
-    slug: c.slug,
-    description: c.description,
-    coverImage: c.cover_image,
-    displayOrder: c.display_order ?? 0,
-    isVisible: Boolean(c.is_visible),
-  };
-}
-
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cmw3tkxn80000146pn15i23vc', name: 'Sofas', slug: 'sofas', description: 'Crafted for comfort, designed for life.', coverImage: '/assets/cat-sofas.jpg', displayOrder: 1, isVisible: true },
   { id: 'cmw3tkxno0001146pyavgjpiw', name: 'Beds', slug: 'beds', description: 'Restful spaces, crafted from solid wood.', coverImage: '/assets/cat-beds.jpg', displayOrder: 2, isVisible: true },
@@ -212,6 +200,50 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cmw3tkxpc0006146p9yjr5g0p', name: 'Dressing Tables', slug: 'dressing-tables', description: 'Elegance and utility in perfect harmony.', coverImage: '/assets/cat-dressing-tables.jpg', displayOrder: 7, isVisible: true },
   { id: 'cmw3tkxpo0007146p5dyj024w', name: 'Storage Cabinets', slug: 'storage-cabinets', description: 'Organized spaces with lasting strength.', coverImage: '/assets/cat-storage-cabinets.jpg', displayOrder: 8, isVisible: true },
 ];
+
+export function getCategoryCoverFallback(slug?: string, name?: string): string | null {
+  const normSlug = (slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normName = (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  for (const def of DEFAULT_CATEGORIES) {
+    const defSlug = def.slug.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const defName = def.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    if (
+      defSlug === normSlug ||
+      defName === normName ||
+      defSlug.replace(/s$/, '') === normSlug.replace(/s$/, '') ||
+      defName.replace(/s$/, '') === normName.replace(/s$/, '') ||
+      (normSlug && (defSlug.includes(normSlug) || normSlug.includes(defSlug))) ||
+      (normName && (defName.includes(normName) || normName.includes(defName)))
+    ) {
+      return def.coverImage || null;
+    }
+  }
+
+  if (/sofa|couch/i.test(normSlug || normName)) return '/assets/cat-sofas.jpg';
+  if (/bed|mattress|cot/i.test(normSlug || normName)) return '/assets/cat-beds.jpg';
+  if (/din|table/i.test(normSlug || normName)) return '/assets/cat-dining.jpg';
+  if (/wardrobe|closet|cupboard/i.test(normSlug || normName)) return '/assets/cat-wardrobes.jpg';
+  if (/chair|seating|stool/i.test(normSlug || normName)) return '/assets/cat-chairs.jpg';
+  if (/tv|entertainment/i.test(normSlug || normName)) return '/assets/cat-tv-units.jpg';
+  if (/dress/i.test(normSlug || normName)) return '/assets/cat-dressing-tables.jpg';
+  if (/storage|cabinet/i.test(normSlug || normName)) return '/assets/cat-storage-cabinets.jpg';
+
+  return null;
+}
+
+function mapSupabaseCategory(c: any): Category {
+  return {
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    description: c.description,
+    coverImage: c.cover_image || getCategoryCoverFallback(c.slug, c.name),
+    displayOrder: c.display_order ?? 0,
+    isVisible: Boolean(c.is_visible),
+  };
+}
 
 export const api = {
   // Categories
@@ -226,6 +258,15 @@ export const api = {
 
         if (error) surfaceSupabaseError('loading categories', error);
         if (!error && data && data.length > 0) {
+          // Asynchronously persist fallback cover_image to Supabase if it was null
+          data.forEach(c => {
+            if (!c.cover_image) {
+              const fallback = getCategoryCoverFallback(c.slug, c.name);
+              if (fallback) {
+                supabase?.from('categories').update({ cover_image: fallback }).eq('id', c.id).then(() => {});
+              }
+            }
+          });
           return data.map(mapSupabaseCategory);
         }
         if (!error && data && data.length === 0) {

@@ -5,7 +5,7 @@ import { Header } from '../../components/common/Header';
 import { Footer } from '../../components/common/Footer';
 import { WhatsAppBanner } from '../../components/common/WhatsAppBanner';
 import { useQuery } from '@tanstack/react-query';
-import { api, DEFAULT_CATEGORIES } from '../../services/api';
+import { api, DEFAULT_CATEGORIES, getCategoryCoverFallback } from '../../services/api';
 import { Category } from '../../types';
 
 export const HomePage: React.FC = () => {
@@ -93,9 +93,11 @@ export const HomePage: React.FC = () => {
     .map(product => {
       const image = [...product.images]
         .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.displayOrder - b.displayOrder)[0];
-      return image ? {
-        image: image.url || image.filePath,
-        alt: image.altText || product.name,
+      const fallbackImg = product.category?.slug ? getCategoryCoverFallback(product.category.slug, product.category.name) : undefined;
+      const finalImage = image ? (image.url || image.filePath) : fallbackImg;
+      return finalImage ? {
+        image: finalImage,
+        alt: image?.altText || product.name,
         title: product.name,
         subtitle: product.category?.name || product.modelCode,
         link: `/products/${product.slug}`,
@@ -142,7 +144,7 @@ export const HomePage: React.FC = () => {
   const categories = (categoriesQuery.data || []).map((category: Category) => ({
     name: category.name,
     slug: category.slug,
-    image: category.coverImage,
+    image: category.coverImage || getCategoryCoverFallback(category.slug, category.name) || undefined,
   }));
 
   const currentHero = heroSlides[heroIndex];
@@ -270,12 +272,22 @@ export const HomePage: React.FC = () => {
                 className="cursor-pointer group flex flex-col items-center"
               >
                 <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-[#E2D8C9] border border-[#DDD1C0] shadow-sm group-hover:shadow-lg transition-all duration-300 group-hover:scale-[1.03]">
-                  {cat.image ? <img
-                    src={cat.image}
-                    alt={cat.name}
-                    loading="lazy"
-                    className="w-full h-full object-cover object-center img-zoom"
-                  /> : <div className="w-full h-full flex items-center justify-center bg-[#EAE2D5] text-[8px] text-[#7A675B]">Photo coming soon</div>}
+                  {cat.image ? (
+                    <img
+                      src={cat.image}
+                      alt={cat.name}
+                      loading="lazy"
+                      onError={(e) => {
+                        const fallback = getCategoryCoverFallback(cat.slug, cat.name);
+                        if (fallback && e.currentTarget.src !== fallback) {
+                          e.currentTarget.src = fallback;
+                        }
+                      }}
+                      className="w-full h-full object-cover object-center img-zoom"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-[#EAE2D5] text-[8px] text-[#7A675B]">Photo coming soon</div>
+                  )}
                 </div>
                 <span className="mt-1.5 font-serif text-[10.5px] text-[#241B16] font-semibold text-center leading-tight group-hover:text-[#B69764] transition-colors duration-200">
                   {cat.name}
