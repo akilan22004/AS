@@ -185,6 +185,17 @@ function mapSupabaseCategory(c: any): Category {
   };
 }
 
+export const DEFAULT_CATEGORIES: Category[] = [
+  { id: 'cmw3tkxn80000146pn15i23vc', name: 'Sofas', slug: 'sofas', description: 'Crafted for comfort, designed for life.', coverImage: '/assets/cat-sofas.jpg', displayOrder: 1, isVisible: true },
+  { id: 'cmw3tkxno0001146pyavgjpiw', name: 'Beds', slug: 'beds', description: 'Restful spaces, crafted from solid wood.', coverImage: '/assets/cat-beds.jpg', displayOrder: 2, isVisible: true },
+  { id: 'cmw3tkxnz0002146paz5sao5c', name: 'Dining Tables', slug: 'dining-tables', description: 'Bring people together over timeless design.', coverImage: '/assets/cat-dining.jpg', displayOrder: 3, isVisible: true },
+  { id: 'cmw3tkxob0003146prglo9wky', name: 'Wardrobes', slug: 'wardrobes', description: 'Spacious, sturdy and elegantly crafted.', coverImage: '/assets/cat-wardrobes.jpg', displayOrder: 4, isVisible: true },
+  { id: 'cmw3tkxoo0004146pobyu9rfv', name: 'Chairs', slug: 'chairs', description: 'A perfect blend of comfort and craftsmanship.', coverImage: '/assets/cat-chairs.jpg', displayOrder: 5, isVisible: true },
+  { id: 'cmw3tkxp10005146ph4w55nyz', name: 'TV Units', slug: 'tv-units', description: 'Stylish storage for your entertainment space.', coverImage: '/assets/cat-tv-units.jpg', displayOrder: 6, isVisible: true },
+  { id: 'cmw3tkxpc0006146p9yjr5g0p', name: 'Dressing Tables', slug: 'dressing-tables', description: 'Elegance and utility in perfect harmony.', coverImage: '/assets/cat-dressing-tables.jpg', displayOrder: 7, isVisible: true },
+  { id: 'cmw3tkxpo0007146p5dyj024w', name: 'Storage Cabinets', slug: 'storage-cabinets', description: 'Organized spaces with lasting strength.', coverImage: '/assets/cat-storage-cabinets.jpg', displayOrder: 8, isVisible: true },
+];
+
 export const api = {
   // Categories
   getCategories: async (): Promise<Category[]> => {
@@ -197,14 +208,18 @@ export const api = {
           .order('display_order', { ascending: true });
 
         if (error) surfaceSupabaseError('loading categories', error);
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           return data.map(mapSupabaseCategory);
         }
+        if (!error && data && data.length === 0) {
+          return DEFAULT_CATEGORIES.filter(c => c.isVisible);
+        }
       } catch (error) {
+        if (!hasBackendApi) return DEFAULT_CATEGORIES.filter(c => c.isVisible);
         preserveProductionError(error);
-        // Fallback to API proxy
       }
     }
+    if (!hasBackendApi) return DEFAULT_CATEGORIES.filter(c => c.isVisible);
     return fetchJson<Category[]>(`${API_BASE}/categories`);
   },
 
@@ -217,14 +232,40 @@ export const api = {
           .order('display_order', { ascending: true });
 
         if (error) surfaceSupabaseError('loading admin categories', error);
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           return data.map(mapSupabaseCategory);
         }
+
+        // If categories table in Supabase is currently empty, auto-seed default categories into the database
+        if (!error && data && data.length === 0) {
+          try {
+            const seedPayload = DEFAULT_CATEGORIES.map(c => ({
+              id: c.id,
+              name: c.name,
+              slug: c.slug,
+              description: c.description,
+              cover_image: c.coverImage,
+              display_order: c.displayOrder,
+              is_visible: c.isVisible,
+            }));
+            const { data: inserted, error: insertError } = await supabase
+              .from('categories')
+              .upsert(seedPayload, { onConflict: 'id' })
+              .select();
+            if (!insertError && inserted && inserted.length > 0) {
+              return inserted.map(mapSupabaseCategory);
+            }
+          } catch {
+            // Seeding will silently fall back to DEFAULT_CATEGORIES if user lacks direct write permission
+          }
+          return DEFAULT_CATEGORIES;
+        }
       } catch (error) {
+        if (!hasBackendApi) return DEFAULT_CATEGORIES;
         preserveProductionError(error);
-        // Fallback to API proxy
       }
     }
+    if (!hasBackendApi) return DEFAULT_CATEGORIES;
     return fetchJson<Category[]>(`${API_BASE}/categories/admin/all`);
   },
 
@@ -583,6 +624,32 @@ export const api = {
         const isFeatured = formData.get('isFeatured') === 'true';
         const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
+        // Ensure category exists in database before inserting product (prevents 23503 foreign key violation)
+        const { data: existingCat } = await supabase
+          .from('categories')
+          .select('id')
+          .eq('id', categoryId)
+          .maybeSingle();
+
+        if (!existingCat) {
+          const defaultCat = DEFAULT_CATEGORIES.find(c => c.id === categoryId);
+          if (defaultCat) {
+            try {
+              await supabase.from('categories').upsert({
+                id: defaultCat.id,
+                name: defaultCat.name,
+                slug: defaultCat.slug,
+                description: defaultCat.description,
+                cover_image: defaultCat.coverImage,
+                display_order: defaultCat.displayOrder,
+                is_visible: defaultCat.isVisible,
+              }, { onConflict: 'id' });
+            } catch {
+              // ignore if already inserted or restricted
+            }
+          }
+        }
+
         // 1. Insert product into Supabase
         const { data: newProd, error: prodErr } = await supabase
           .from('products')
@@ -653,7 +720,33 @@ export const api = {
         if (updates.name !== undefined) payload.name = updates.name;
         if (updates.modelCode !== undefined) payload.model_code = updates.modelCode;
         if (updates.slug !== undefined) payload.slug = updates.slug;
-        if (updates.categoryId !== undefined) payload.category_id = updates.categoryId;
+        if (updates.categoryId !== undefined) {
+          payload.category_id = updates.categoryId;
+          const { data: existingCat } = await supabase
+            .from('categories')
+            .select('id')
+            .eq('id', updates.categoryId)
+            .maybeSingle();
+
+          if (!existingCat) {
+            const defaultCat = DEFAULT_CATEGORIES.find(c => c.id === updates.categoryId);
+            if (defaultCat) {
+              try {
+                await supabase.from('categories').upsert({
+                  id: defaultCat.id,
+                  name: defaultCat.name,
+                  slug: defaultCat.slug,
+                  description: defaultCat.description,
+                  cover_image: defaultCat.coverImage,
+                  display_order: defaultCat.displayOrder,
+                  is_visible: defaultCat.isVisible,
+                }, { onConflict: 'id' });
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
         if (updates.description !== undefined) payload.description = updates.description;
         if (updates.material !== undefined) payload.material = updates.material;
         if (updates.length !== undefined) payload.length = updates.length;

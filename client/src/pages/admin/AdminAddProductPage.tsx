@@ -61,7 +61,7 @@ export const AdminAddProductPage: React.FC = () => {
   });
 
   const { data: categories = [] } = useQuery<Category[]>({
-    queryKey: ['categories'],
+    queryKey: ['admin-categories'],
     queryFn: api.getAdminCategories,
   });
 
@@ -83,8 +83,10 @@ export const AdminAddProductPage: React.FC = () => {
   }, [productQuery.data]);
 
   useEffect(() => {
-    if (!id && !categoryId && categories.length > 0) {
-      setCategoryId(categories[0].id);
+    if (!id && categories.length > 0) {
+      if (!categoryId || !categories.some(c => c.id === categoryId)) {
+        setCategoryId(categories[0].id);
+      }
     }
   }, [id, categoryId, categories]);
 
@@ -481,30 +483,26 @@ export const AdminAddProductPage: React.FC = () => {
                   Category <span className="text-red-600">*</span>
                 </label>
               </div>
-              <select
-                value={categoryId || categories[0]?.id || ''}
-                onChange={(e) => setCategoryId(e.target.value)}
-                disabled={categories.length === 0}
-                className="w-full bg-[#FAF7F2] border border-[#DDD1C0] rounded-xl px-3 py-2 text-xs text-[#241B16] focus:outline-none focus:border-[#493326] disabled:opacity-60"
-              >
-                {categories.length === 0 ? (
-                  <option value="">No categories available</option>
-                ) : (
-                  categories.map((c) => (
-                    <option key={c.id} value={c.id}>
+              <div className="relative">
+                <select
+                  id="category-select"
+                  aria-label="Product Category"
+                  value={categoryId || (categories.length > 0 ? categories[0].id : '')}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  className="w-full bg-[#FAF7F2] border border-[#DDD1C0] rounded-xl px-3 py-2 pr-8 text-xs text-[#241B16] font-medium focus:outline-none focus:border-[#493326] cursor-pointer appearance-none transition-colors"
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id} className="bg-white text-[#241B16] py-1 text-xs">
                       {c.name}
                     </option>
-                  ))
-                )}
-              </select>
-              {categories.length === 0 && (
-                <p className="mt-1 text-[9px] text-amber-800">
-                  ⚠️ No categories exist yet.{' '}
-                  <Link to="/admin/categories" className="underline font-bold text-[#493326]">
-                    Create category
-                  </Link>
-                </p>
-              )}
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#7A675B]">
+                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
+                    <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" fillRule="evenodd"></path>
+                  </svg>
+                </div>
+              </div>
             </div>
           </div>
 
