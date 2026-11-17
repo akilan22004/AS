@@ -569,6 +569,9 @@ export const api = {
         const name = String(formData.get('name') || '').trim();
         const modelCode = String(formData.get('modelCode') || '').trim();
         const categoryId = String(formData.get('categoryId') || '').trim();
+        if (!categoryId) {
+          throw new Error('A valid Category is required to create a product. Please select or add a category first.');
+        }
         const description = formData.get('description') ? String(formData.get('description')) : null;
         const material = formData.get('material') ? String(formData.get('material')) : null;
         const length = formData.get('length') ? Number(formData.get('length')) : null;

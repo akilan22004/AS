@@ -82,6 +82,12 @@ export const AdminAddProductPage: React.FC = () => {
     setExistingImages(product.images);
   }, [productQuery.data]);
 
+  useEffect(() => {
+    if (!id && !categoryId && categories.length > 0) {
+      setCategoryId(categories[0].id);
+    }
+  }, [id, categoryId, categories]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
@@ -134,11 +140,18 @@ export const AdminAddProductPage: React.FC = () => {
     let savedProductId = id;
     let uploadedFileCount = 0;
     try {
+      const effectiveCategoryId = (categoryId || categories[0]?.id || '').trim();
+      if (!effectiveCategoryId) {
+        alert('Please create or select a category in Category Management before saving a product.');
+        setSubmitting(false);
+        return;
+      }
+
       const formData = new FormData();
       formData.append('name', name);
       formData.append('modelCode', modelCode);
       formData.append('slug', name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
-      formData.append('categoryId', categoryId || categories[0]?.id || '');
+      formData.append('categoryId', effectiveCategoryId);
       formData.append('description', description);
       formData.append('material', material);
       if (length) formData.append('length', length);
@@ -158,7 +171,7 @@ export const AdminAddProductPage: React.FC = () => {
           name,
           modelCode,
           slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-          categoryId: categoryId || categories[0]?.id || '',
+          categoryId: effectiveCategoryId,
           description,
           material,
           length: length ? Number(length) : null,
@@ -469,16 +482,29 @@ export const AdminAddProductPage: React.FC = () => {
                 </label>
               </div>
               <select
-                value={categoryId}
+                value={categoryId || categories[0]?.id || ''}
                 onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full bg-[#FAF7F2] border border-[#DDD1C0] rounded-xl px-3 py-2 text-xs text-[#241B16] focus:outline-none focus:border-[#493326]"
+                disabled={categories.length === 0}
+                className="w-full bg-[#FAF7F2] border border-[#DDD1C0] rounded-xl px-3 py-2 text-xs text-[#241B16] focus:outline-none focus:border-[#493326] disabled:opacity-60"
               >
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+                {categories.length === 0 ? (
+                  <option value="">No categories available</option>
+                ) : (
+                  categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))
+                )}
               </select>
+              {categories.length === 0 && (
+                <p className="mt-1 text-[9px] text-amber-800">
+                  ⚠️ No categories exist yet.{' '}
+                  <Link to="/admin/categories" className="underline font-bold text-[#493326]">
+                    Create category
+                  </Link>
+                </p>
+              )}
             </div>
           </div>
 
