@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { api, DEFAULT_CATEGORIES } from '../../services/api';
 import { Category, ProductImage } from '../../types';
+import { optimizeImage } from '../../utils/imageOptimizer';
 
 const MAX_IMAGES_PER_UPLOAD = 20;
 
@@ -40,6 +41,7 @@ export const AdminAddProductPage: React.FC = () => {
   const [dimensionUnit, setDimensionUnit] = useState('cm');
   const [specifications, setSpecifications] = useState('');
   const [isPublished, setIsPublished] = useState(true);
+  const [isFeatured, setIsFeatured] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
@@ -80,6 +82,7 @@ export const AdminAddProductPage: React.FC = () => {
     setDimensionUnit(product.dimensionUnit || 'cm');
     setSpecifications(product.specifications || '');
     setIsPublished(product.isPublished);
+    setIsFeatured(Boolean(product.isFeatured));
     setExistingImages(product.images);
   }, [productQuery.data]);
 
@@ -91,11 +94,12 @@ export const AdminAddProductPage: React.FC = () => {
     }
   }, [id, categoryId, categories]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const files = Array.from(e.target.files);
-      setSelectedFiles((prev) => [...prev, ...files]);
-      const newUrls = files.map((f) => URL.createObjectURL(f));
+      const rawFiles = Array.from(e.target.files);
+      const optimizedFiles = await Promise.all(rawFiles.map((file) => optimizeImage(file)));
+      setSelectedFiles((prev) => [...prev, ...optimizedFiles]);
+      const newUrls = optimizedFiles.map((f) => URL.createObjectURL(f));
       setPreviewUrls((prev) => [...prev, ...newUrls]);
       e.target.value = '';
     }
@@ -162,7 +166,8 @@ export const AdminAddProductPage: React.FC = () => {
       if (height) formData.append('height', height);
       formData.append('dimensionUnit', dimensionUnit);
       formData.append('specifications', specifications);
-      formData.append('isPublished', String(id ? publish : false));
+      formData.append('isPublished', String(publish));
+      formData.append('isFeatured', String(isFeatured));
 
       const imageBatches: File[][] = [];
       for (let index = 0; index < selectedFiles.length; index += MAX_IMAGES_PER_UPLOAD) {
@@ -183,6 +188,7 @@ export const AdminAddProductPage: React.FC = () => {
           dimensionUnit,
           specifications,
           isPublished: publish,
+          isFeatured,
         });
         for (const batch of imageBatches) {
           await api.updateProduct(id, {}, batch);
@@ -197,10 +203,12 @@ export const AdminAddProductPage: React.FC = () => {
         selectedFiles.forEach((file) => formData.append('images', file));
         const createdProduct = await api.createProduct(formData);
         savedProductId = createdProduct.id;
-        if (publish && !createdProduct.isPublished) {
-          await api.updateProduct(createdProduct.id, { isPublished: true });
-        }
       }
+      await queryClient.invalidateQueries({ queryKey: ['products'] });
+      await queryClient.invalidateQueries({ queryKey: ['featured-products'] });
+      await queryClient.invalidateQueries({ queryKey: ['categories'] });
+      await queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+      await queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
       await queryClient.invalidateQueries();
       previewUrls.forEach(url => URL.revokeObjectURL(url));
       alert(id ? 'Product changes saved.' : publish ? 'Product published to catalog successfully!' : 'Saved as draft!');
@@ -573,6 +581,23 @@ export const AdminAddProductPage: React.FC = () => {
               placeholder="Enter handcrafted specifications and features..."
               className="w-full bg-[#FAF7F2] border border-[#DDD1C0] rounded-xl px-3 py-2 text-xs text-[#241B16] focus:outline-none focus:border-[#493326] leading-relaxed"
             />
+          </div>
+
+          {/* Featured Toggle */}
+          <div className="flex items-center justify-between bg-[#FCFAF7] border border-[#DDD1C0] p-3 rounded-2xl">
+            <div>
+              <span className="text-[11px] font-bold text-[#241B16] block">Feature on Homepage</span>
+              <span className="text-[9.5px] text-[#7A675B] block">Highlight in the Featured Collection on the front page</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isFeatured}
+                onChange={(e) => setIsFeatured(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-[#DDD1C0] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#493326]"></div>
+            </label>
           </div>
 
           {/* Publish Status Toggle */}

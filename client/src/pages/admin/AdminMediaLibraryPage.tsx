@@ -1,30 +1,78 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, Search, UploadCloud, FolderPlus } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChevronLeft, Search, UploadCloud, FolderPlus, X, ExternalLink, Copy, Check } from 'lucide-react';
 import { api } from '../../services/api';
+import { supabase } from '../../services/supabase';
+import { optimizeImage } from '../../utils/imageOptimizer';
 
 export const AdminMediaLibraryPage: React.FC = () => {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedImage, setSelectedImage] = useState<any | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+
   const productsQuery = useQuery({ queryKey: ['admin-products'], queryFn: api.getAllProductsAdmin });
   const mediaItems = (productsQuery.data?.items || []).flatMap(product =>
     product.images.map(image => ({
       id: image.id,
       productId: product.id,
       productName: product.name,
+      modelCode: product.modelCode,
       name: image.altText || `${product.modelCode} image`,
       url: image.thumbUrl || image.url || image.filePath,
+      fullUrl: image.url || image.thumbUrl || image.filePath,
       category: product.category?.name || 'Other',
       order: image.displayOrder,
+      filePath: image.filePath,
     }))
   );
+
   const filterTabs = ['All', ...new Set(mediaItems.map(item => item.category))];
   const filteredItems = mediaItems.filter(item => {
     const matchCategory = activeTab === 'All' || item.category === activeTab;
-    const matchSearch = `${item.name} ${item.productName}`.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchSearch = `${item.name} ${item.productName} ${item.modelCode}`.toLowerCase().includes(searchQuery.toLowerCase());
     return matchCategory && matchSearch;
   });
+
+  const handleDirectUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files = Array.from(e.target.files);
+    e.target.value = '';
+    setUploading(true);
+    setUploadMessage(null);
+
+    try {
+      if (!supabase) throw new Error('Supabase Storage is not initialized.');
+      let count = 0;
+      for (const file of files) {
+        const optimized = await optimizeImage(file);
+        const ext = optimized.name.split('.').pop() || 'webp';
+        const storagePath = `media-library/${Date.now()}-${count}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from('furniture_image')
+          .upload(storagePath, optimized, { contentType: optimized.type, upsert: true });
+        if (uploadError) throw uploadError;
+        count++;
+      }
+      setUploadMessage(`Successfully uploaded ${count} photo${count === 1 ? '' : 's'} to Supabase Storage!`);
+      setTimeout(() => setUploadMessage(null), 5000);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="min-w-[320px] max-w-[480px] mx-auto min-h-screen bg-[#F7F3EC] shadow-2xl flex flex-col font-sans relative overflow-x-hidden">
@@ -91,16 +139,34 @@ export const AdminMediaLibraryPage: React.FC = () => {
         </div>
 
         {/* Actions Row */}
-        <div className="grid grid-cols-2 gap-2.5">
-          <Link to="/admin/products/new" className="bg-[#493326] hover:bg-[#38251C] text-[#F7F3EC] py-2.5 px-3 rounded-2xl font-serif text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm transition-all">
-            <UploadCloud size={16} />
-            <span>Add Product Photos</span>
+        <div className="grid grid-cols-3 gap-2">
+          <label className="bg-[#493326] hover:bg-[#38251C] text-[#F7F3EC] py-2 px-2.5 rounded-2xl font-serif text-[11px] font-semibold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer text-center">
+            <UploadCloud size={14} />
+            <span>{uploading ? 'Optimizing...' : 'Upload Image'}</span>
+            <input
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleDirectUpload}
+              disabled={uploading}
+              className="hidden"
+            />
+          </label>
+          <Link to="/admin/products/new" className="bg-[#594338] hover:bg-[#493326] text-[#F7F3EC] py-2 px-2.5 rounded-2xl font-serif text-[11px] font-semibold flex items-center justify-center gap-1.5 shadow-sm transition-all text-center">
+            <span>+ Add Model</span>
           </Link>
-          <Link to="/admin/categories" className="border border-[#493326] text-[#493326] hover:bg-[#F2ECE1] py-2.5 px-3 rounded-2xl font-serif text-xs font-semibold flex items-center justify-center gap-1.5 transition-all">
-            <FolderPlus size={16} />
-            <span>Manage Categories</span>
+          <Link to="/admin/categories" className="border border-[#493326] text-[#493326] hover:bg-[#F2ECE1] py-2 px-2.5 rounded-2xl font-serif text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all text-center">
+            <FolderPlus size={14} />
+            <span>Categories</span>
           </Link>
         </div>
+
+        {uploadMessage && (
+          <div className="bg-[#EAE2D5] border border-[#B69764] text-[#241B16] px-3 py-2 rounded-xl text-xs flex items-center gap-2 shadow-sm animate-fadeIn">
+            <Check size={15} className="text-green-800" />
+            <span>{uploadMessage}</span>
+          </div>
+        )}
 
         {/* Search & Filter */}
         <div className="flex items-center gap-2">
@@ -146,29 +212,85 @@ export const AdminMediaLibraryPage: React.FC = () => {
             </div>
           )}
           {filteredItems.map(item => (
-              <Link
-                key={item.id}
-                to={`/admin/products/${encodeURIComponent(item.productId)}/edit`}
-                className="bg-[#FCFAF7] border border-[#DDD1C0] rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:border-[#C8A77D] transition-all"
-              >
-                <div className="relative aspect-square w-full overflow-hidden bg-[#E2D8C9]">
-                  <img src={item.url} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
-                </div>
+            <div
+              key={item.id}
+              onClick={() => setSelectedImage(item)}
+              className="bg-[#FCFAF7] border border-[#DDD1C0] rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between hover:border-[#C8A77D] transition-all cursor-pointer group"
+            >
+              <div className="relative aspect-square w-full overflow-hidden bg-[#E2D8C9]">
+                <img src={item.url} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+              </div>
 
-                <div className="p-1.5 text-center">
-                  <span className="font-mono text-[9px] font-bold text-[#241B16] block truncate">
-                    {item.name}
-                  </span>
-                  <span className="text-[7.5px] text-[#8A7569] block mt-0.5">
-                    {item.productName} · Image {item.order + 1}
-                  </span>
-                </div>
-              </Link>
+              <div className="p-1.5 text-center">
+                <span className="font-mono text-[9px] font-bold text-[#241B16] block truncate">
+                  {item.name}
+                </span>
+                <span className="text-[7.5px] text-[#8A7569] block mt-0.5">
+                  {item.productName} · Image {item.order + 1}
+                </span>
+              </div>
+            </div>
           ))}
           {!productsQuery.isLoading && !productsQuery.isError && filteredItems.length === 0 && (
             <p className="col-span-3 py-8 text-center text-xs text-[#7A675B]">No product photos match this filter.</p>
           )}
         </div>
+
+        {/* Image Preview Modal */}
+        {selectedImage && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+            <div className="bg-[#FAF7F2] border border-[#DDD1C0] rounded-2xl max-w-[420px] w-full overflow-hidden shadow-2xl relative text-[#241B16]">
+              <div className="flex items-center justify-between p-3 border-b border-[#DDD1C0] bg-[#F2ECE1]">
+                <div>
+                  <h3 className="font-serif text-xs font-bold text-[#241B16] truncate max-w-[300px]">
+                    {selectedImage.productName}
+                  </h3>
+                  <p className="font-mono text-[9px] text-[#7A675B]">
+                    Model: {selectedImage.modelCode || 'AF-MODEL'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedImage(null)}
+                  className="p-1 text-[#7A675B] hover:text-[#241B16]"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-3 bg-black flex items-center justify-center max-h-[340px] overflow-hidden">
+                <img
+                  src={selectedImage.fullUrl}
+                  alt={selectedImage.name}
+                  className="max-h-[320px] w-auto object-contain rounded-lg"
+                />
+              </div>
+
+              <div className="p-3 space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => copyToClipboard(selectedImage.fullUrl)}
+                    className="flex-1 py-1.5 px-3 rounded-xl border border-[#DDD1C0] bg-white hover:bg-[#FAF7F2] text-xs font-serif flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    {copied ? <Check size={14} className="text-green-700" /> : <Copy size={14} />}
+                    <span>{copied ? 'Copied!' : 'Copy Image URL'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const prodId = selectedImage.productId;
+                      setSelectedImage(null);
+                      navigate(`/admin/products/${encodeURIComponent(prodId)}/edit`);
+                    }}
+                    className="flex-1 py-1.5 px-3 rounded-xl bg-[#493326] text-[#F7F3EC] hover:bg-[#38251C] text-xs font-serif flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                  >
+                    <ExternalLink size={14} />
+                    <span>Edit Model</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

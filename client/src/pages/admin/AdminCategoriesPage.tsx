@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronLeft, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
-import { api } from '../../services/api';
+import { api, DEFAULT_CATEGORIES } from '../../services/api';
 import { Category } from '../../types';
 
 export const AdminCategoriesPage: React.FC = () => {
@@ -10,6 +10,7 @@ export const AdminCategoriesPage: React.FC = () => {
   const categoriesQuery = useQuery({
     queryKey: ['admin-categories'],
     queryFn: api.getAdminCategories,
+    initialData: DEFAULT_CATEGORIES,
   });
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');

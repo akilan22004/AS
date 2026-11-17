@@ -416,7 +416,24 @@ export const api = {
 
         if (error) surfaceSupabaseError('loading featured products', error);
         if (!error && data) {
-          return data.map(mapSupabaseProduct);
+          if (data.length > 0) {
+            return data.map(mapSupabaseProduct);
+          }
+          // If no products are marked is_featured=true yet, automatically display the latest published products
+          const { data: latestData } = await supabase
+            .from('products')
+            .select(`
+              *,
+              category:categories(id, name, slug),
+              images:product_images(*)
+            `)
+            .eq('is_published', true)
+            .order('created_at', { ascending: false })
+            .limit(6);
+          if (latestData && latestData.length > 0) {
+            return latestData.map(mapSupabaseProduct);
+          }
+          return [];
         }
       } catch (error) {
         preserveProductionError(error);
@@ -634,19 +651,29 @@ export const api = {
         if (!existingCat) {
           const defaultCat = DEFAULT_CATEGORIES.find(c => c.id === categoryId);
           if (defaultCat) {
-            try {
-              await supabase.from('categories').upsert({
-                id: defaultCat.id,
-                name: defaultCat.name,
-                slug: defaultCat.slug,
-                description: defaultCat.description,
-                cover_image: defaultCat.coverImage,
-                display_order: defaultCat.displayOrder,
-                is_visible: defaultCat.isVisible,
-              }, { onConflict: 'id' });
-            } catch {
-              // ignore if already inserted or restricted
+            // Try to seed the category into Supabase
+            const { error: upsertCatErr } = await supabase.from('categories').upsert({
+              id: defaultCat.id,
+              name: defaultCat.name,
+              slug: defaultCat.slug,
+              description: defaultCat.description,
+              cover_image: defaultCat.coverImage,
+              display_order: defaultCat.displayOrder,
+              is_visible: defaultCat.isVisible,
+            }, { onConflict: 'id' });
+
+            if (upsertCatErr) {
+              // RLS is blocking the insert — throw a clear actionable error
+              throw new Error(
+                `Cannot create product: the selected category "${defaultCat.name}" does not exist in the database yet, and automatic seeding failed (${upsertCatErr.message}). ` +
+                `Please go to Supabase Dashboard → SQL Editor and run the category seed SQL, then try again.`
+              );
             }
+          } else {
+            // categoryId is not even in DEFAULT_CATEGORIES — invalid
+            throw new Error(
+              `Cannot create product: category ID "${categoryId}" is not valid. Please select a valid category and try again.`
+            );
           }
         }
 
@@ -731,19 +758,25 @@ export const api = {
           if (!existingCat) {
             const defaultCat = DEFAULT_CATEGORIES.find(c => c.id === updates.categoryId);
             if (defaultCat) {
-              try {
-                await supabase.from('categories').upsert({
-                  id: defaultCat.id,
-                  name: defaultCat.name,
-                  slug: defaultCat.slug,
-                  description: defaultCat.description,
-                  cover_image: defaultCat.coverImage,
-                  display_order: defaultCat.displayOrder,
-                  is_visible: defaultCat.isVisible,
-                }, { onConflict: 'id' });
-              } catch {
-                // ignore
+              const { error: upsertCatErr } = await supabase.from('categories').upsert({
+                id: defaultCat.id,
+                name: defaultCat.name,
+                slug: defaultCat.slug,
+                description: defaultCat.description,
+                cover_image: defaultCat.coverImage,
+                display_order: defaultCat.displayOrder,
+                is_visible: defaultCat.isVisible,
+              }, { onConflict: 'id' });
+              if (upsertCatErr) {
+                throw new Error(
+                  `Cannot update product: the selected category "${defaultCat.name}" does not exist in the database yet, and automatic seeding failed (${upsertCatErr.message}). ` +
+                  `Please go to Supabase Dashboard → SQL Editor and run the category seed SQL, then try again.`
+                );
               }
+            } else {
+              throw new Error(
+                `Cannot update product: category ID "${updates.categoryId}" is not valid. Please select a valid category and try again.`
+              );
             }
           }
         }

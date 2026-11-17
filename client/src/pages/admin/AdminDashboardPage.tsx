@@ -44,6 +44,7 @@ export const AdminDashboardPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
       queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['featured-products'] });
       setFeedback('Product status updated!');
       setTimeout(() => setFeedback(null), 3000);
     },
@@ -59,6 +60,7 @@ export const AdminDashboardPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
       queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['featured-products'] });
       setFeedback('Product deleted successfully');
       setTimeout(() => setFeedback(null), 3000);
     },
@@ -108,14 +110,20 @@ export const AdminDashboardPage: React.FC = () => {
             Media Library
           </Link>
           <span className="text-[#594338]">•</span>
-          <Link
-            to="/"
-            target="_blank"
-            className="text-[11px] text-[#C8A77D] hover:underline flex items-center gap-1 font-serif"
+          <a
+            href="/"
+            onClick={(e) => {
+              if (!e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                navigate('/');
+              }
+            }}
+            className="text-[11px] text-[#C8A77D] hover:underline flex items-center gap-1 font-serif cursor-pointer"
+            title="View live website"
           >
             <span>View Site</span>
             <ExternalLink size={12} />
-          </Link>
+          </a>
           <button
             onClick={handleLogout}
             className="p-1.5 text-white/80 hover:text-white"
