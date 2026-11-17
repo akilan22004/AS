@@ -65,10 +65,12 @@ const CatalogRealtimeSync: React.FC = () => {
   useEffect(() => {
     const unsubscribe = api.subscribeToCatalogChanges(() => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product'] });
       queryClient.invalidateQueries({ queryKey: ['featured-products'] });
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       queryClient.invalidateQueries({ queryKey: ['admin-categories'] });
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-product'] });
       queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
     });
     return () => unsubscribe();

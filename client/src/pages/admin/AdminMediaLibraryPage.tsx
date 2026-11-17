@@ -16,21 +16,37 @@ export const AdminMediaLibraryPage: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
 
+  const [uploadedMedia, setUploadedMedia] = useState<Array<{
+    id: string;
+    productId: string;
+    productName: string;
+    modelCode: string;
+    name: string;
+    url: string;
+    fullUrl: string;
+    category: string;
+    order: number;
+    filePath: string;
+  }>>([]);
+
   const productsQuery = useQuery({ queryKey: ['admin-products'], queryFn: api.getAllProductsAdmin });
-  const mediaItems = (productsQuery.data?.items || []).flatMap(product =>
-    product.images.map(image => ({
-      id: image.id,
-      productId: product.id,
-      productName: product.name,
-      modelCode: product.modelCode,
-      name: image.altText || `${product.modelCode} image`,
-      url: image.thumbUrl || image.url || image.filePath,
-      fullUrl: image.url || image.thumbUrl || image.filePath,
-      category: product.category?.name || 'Other',
-      order: image.displayOrder,
-      filePath: image.filePath,
-    }))
-  );
+  const mediaItems = [
+    ...(productsQuery.data?.items || []).flatMap(product =>
+      product.images.map(image => ({
+        id: image.id,
+        productId: product.id,
+        productName: product.name,
+        modelCode: product.modelCode,
+        name: image.altText || `${product.modelCode} image`,
+        url: image.thumbUrl || image.url || image.filePath,
+        fullUrl: image.url || image.thumbUrl || image.filePath,
+        category: product.category?.name || 'Other',
+        order: image.displayOrder,
+        filePath: image.filePath,
+      }))
+    ),
+    ...uploadedMedia,
+  ];
 
   const filterTabs = ['All', ...new Set(mediaItems.map(item => item.category))];
   const filteredItems = mediaItems.filter(item => {
@@ -49,6 +65,7 @@ export const AdminMediaLibraryPage: React.FC = () => {
     try {
       if (!supabase) throw new Error('Supabase Storage is not initialized.');
       let count = 0;
+      const newItems: typeof uploadedMedia = [];
       for (const file of files) {
         const optimized = await optimizeImage(file);
         const ext = optimized.name.split('.').pop() || 'webp';
@@ -57,8 +74,23 @@ export const AdminMediaLibraryPage: React.FC = () => {
           .from('furniture_image')
           .upload(storagePath, optimized, { contentType: optimized.type, upsert: true });
         if (uploadError) throw uploadError;
+
+        const { data: pubData } = supabase.storage.from('furniture_image').getPublicUrl(storagePath);
+        newItems.push({
+          id: storagePath,
+          productId: '',
+          productName: 'Media Library Upload',
+          modelCode: 'DIRECT-UPLOAD',
+          name: file.name,
+          url: pubData.publicUrl,
+          fullUrl: pubData.publicUrl,
+          category: 'Direct Uploads',
+          order: count,
+          filePath: storagePath,
+        });
         count++;
       }
+      setUploadedMedia(prev => [...newItems, ...prev]);
       setUploadMessage(`Successfully uploaded ${count} photo${count === 1 ? '' : 's'} to Supabase Storage!`);
       setTimeout(() => setUploadMessage(null), 5000);
     } catch (err) {
@@ -279,12 +311,16 @@ export const AdminMediaLibraryPage: React.FC = () => {
                     onClick={() => {
                       const prodId = selectedImage.productId;
                       setSelectedImage(null);
-                      navigate(`/admin/products/${encodeURIComponent(prodId)}/edit`);
+                      if (prodId) {
+                        navigate(`/admin/products/${encodeURIComponent(prodId)}/edit`);
+                      } else {
+                        navigate('/admin/products/new');
+                      }
                     }}
                     className="flex-1 py-1.5 px-3 rounded-xl bg-[#493326] text-[#F7F3EC] hover:bg-[#38251C] text-xs font-serif flex items-center justify-center gap-1.5 transition-colors shadow-sm"
                   >
                     <ExternalLink size={14} />
-                    <span>Edit Model</span>
+                    <span>{selectedImage.productId ? 'Edit Model' : 'Use in Model'}</span>
                   </button>
                 </div>
               </div>

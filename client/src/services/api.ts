@@ -107,20 +107,37 @@ export function resolveImageUrl(filePath: string | null | undefined): string {
   const normalized = filePath.replace(/\\/g, '/');
   const cleanPath = normalized.replace(/^\/+/, '');
 
+  // 1. Direct assets path
   if (cleanPath.startsWith('assets/')) {
     return '/' + cleanPath;
   }
 
-  if (supabase) {
+  // 2. Map legacy/seed uploads/products/ paths to static /assets/ where local copies reside
+  if (cleanPath.startsWith('uploads/products/')) {
+    const filename = cleanPath.substring('uploads/products/'.length);
+    return '/assets/' + filename;
+  }
+
+  // 3. Supabase Storage paths (products/... or media-library/...)
+  if (supabase && (cleanPath.startsWith('products/') || cleanPath.startsWith('media-library/'))) {
     const { data } = supabase.storage.from('furniture_image').getPublicUrl(cleanPath);
     if (data?.publicUrl) {
       return data.publicUrl;
     }
   }
 
+  // 4. Any other uploads or static files
   const uploadsIdx = normalized.indexOf('uploads/');
   if (uploadsIdx !== -1) {
     return '/' + normalized.substring(uploadsIdx);
+  }
+
+  // 5. Fallback to Supabase Storage if initialized
+  if (supabase) {
+    const { data } = supabase.storage.from('furniture_image').getPublicUrl(cleanPath);
+    if (data?.publicUrl) {
+      return data.publicUrl;
+    }
   }
 
   return '/' + cleanPath;
@@ -642,38 +659,71 @@ export const api = {
         const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
         // Ensure category exists in database before inserting product (prevents 23503 foreign key violation)
+        let effectiveDbCategoryId = categoryId;
         const { data: existingCat } = await supabase
           .from('categories')
           .select('id')
           .eq('id', categoryId)
           .maybeSingle();
 
-        if (!existingCat) {
+        if (existingCat?.id) {
+          effectiveDbCategoryId = existingCat.id;
+        } else {
+          // If not found by ID, look up by slug or name in case the DB has a different ID for this category
           const defaultCat = DEFAULT_CATEGORIES.find(c => c.id === categoryId);
           if (defaultCat) {
-            // Try to seed the category into Supabase
-            const { error: upsertCatErr } = await supabase.from('categories').upsert({
-              id: defaultCat.id,
-              name: defaultCat.name,
-              slug: defaultCat.slug,
-              description: defaultCat.description,
-              cover_image: defaultCat.coverImage,
-              display_order: defaultCat.displayOrder,
-              is_visible: defaultCat.isVisible,
-            }, { onConflict: 'id' });
+            const { data: catBySlug } = await supabase
+              .from('categories')
+              .select('id')
+              .or(`slug.eq.${defaultCat.slug},name.eq.${defaultCat.name}`)
+              .maybeSingle();
 
-            if (upsertCatErr) {
-              // RLS is blocking the insert — throw a clear actionable error
-              throw new Error(
-                `Cannot create product: the selected category "${defaultCat.name}" does not exist in the database yet, and automatic seeding failed (${upsertCatErr.message}). ` +
-                `Please go to Supabase Dashboard → SQL Editor and run the category seed SQL, then try again.`
-              );
+            if (catBySlug?.id) {
+              effectiveDbCategoryId = catBySlug.id;
+            } else {
+              // Category does not exist at all in database -> attempt insert
+              const { data: newCat, error: insertCatErr } = await supabase
+                .from('categories')
+                .insert({
+                  id: defaultCat.id,
+                  name: defaultCat.name,
+                  slug: defaultCat.slug,
+                  description: defaultCat.description,
+                  cover_image: defaultCat.coverImage,
+                  display_order: defaultCat.displayOrder,
+                  is_visible: defaultCat.isVisible,
+                })
+                .select('id')
+                .maybeSingle();
+
+              if (!insertCatErr && newCat?.id) {
+                effectiveDbCategoryId = newCat.id;
+              } else if (insertCatErr) {
+                // If insert failed due to duplicate or RLS, try one more lookup
+                const { data: retryCat } = await supabase
+                  .from('categories')
+                  .select('id')
+                  .or(`slug.eq.${defaultCat.slug},name.eq.${defaultCat.name}`)
+                  .maybeSingle();
+                if (retryCat?.id) {
+                  effectiveDbCategoryId = retryCat.id;
+                } else {
+                  throw new Error(
+                    `Cannot create product: Category "${defaultCat.name}" is not set up in the database yet: ${insertCatErr.message}. Please create the category in Category Management or run the setup script in Supabase SQL Editor.`
+                  );
+                }
+              }
             }
           } else {
-            // categoryId is not even in DEFAULT_CATEGORIES — invalid
-            throw new Error(
-              `Cannot create product: category ID "${categoryId}" is not valid. Please select a valid category and try again.`
-            );
+            // Check if any category exists in DB
+            const { data: anyCat } = await supabase.from('categories').select('id').limit(1).maybeSingle();
+            if (anyCat?.id) {
+              effectiveDbCategoryId = anyCat.id;
+            } else {
+              throw new Error(
+                `Cannot create product: Category ID "${categoryId}" was not found in the database. Please create a category in Category Management first.`
+              );
+            }
           }
         }
 
@@ -684,7 +734,7 @@ export const api = {
             name,
             model_code: modelCode,
             slug,
-            category_id: categoryId,
+            category_id: effectiveDbCategoryId,
             description,
             material,
             length,
@@ -748,37 +798,61 @@ export const api = {
         if (updates.modelCode !== undefined) payload.model_code = updates.modelCode;
         if (updates.slug !== undefined) payload.slug = updates.slug;
         if (updates.categoryId !== undefined) {
-          payload.category_id = updates.categoryId;
+          let effectiveDbCategoryId = updates.categoryId;
           const { data: existingCat } = await supabase
             .from('categories')
             .select('id')
             .eq('id', updates.categoryId)
             .maybeSingle();
 
-          if (!existingCat) {
+          if (existingCat?.id) {
+            effectiveDbCategoryId = existingCat.id;
+          } else {
             const defaultCat = DEFAULT_CATEGORIES.find(c => c.id === updates.categoryId);
             if (defaultCat) {
-              const { error: upsertCatErr } = await supabase.from('categories').upsert({
-                id: defaultCat.id,
-                name: defaultCat.name,
-                slug: defaultCat.slug,
-                description: defaultCat.description,
-                cover_image: defaultCat.coverImage,
-                display_order: defaultCat.displayOrder,
-                is_visible: defaultCat.isVisible,
-              }, { onConflict: 'id' });
-              if (upsertCatErr) {
-                throw new Error(
-                  `Cannot update product: the selected category "${defaultCat.name}" does not exist in the database yet, and automatic seeding failed (${upsertCatErr.message}). ` +
-                  `Please go to Supabase Dashboard → SQL Editor and run the category seed SQL, then try again.`
-                );
+              const { data: catBySlug } = await supabase
+                .from('categories')
+                .select('id')
+                .or(`slug.eq.${defaultCat.slug},name.eq.${defaultCat.name}`)
+                .maybeSingle();
+
+              if (catBySlug?.id) {
+                effectiveDbCategoryId = catBySlug.id;
+              } else {
+                const { data: newCat, error: insertCatErr } = await supabase
+                  .from('categories')
+                  .insert({
+                    id: defaultCat.id,
+                    name: defaultCat.name,
+                    slug: defaultCat.slug,
+                    description: defaultCat.description,
+                    cover_image: defaultCat.coverImage,
+                    display_order: defaultCat.displayOrder,
+                    is_visible: defaultCat.isVisible,
+                  })
+                  .select('id')
+                  .maybeSingle();
+
+                if (!insertCatErr && newCat?.id) {
+                  effectiveDbCategoryId = newCat.id;
+                } else if (insertCatErr) {
+                  const { data: retryCat } = await supabase
+                    .from('categories')
+                    .select('id')
+                    .or(`slug.eq.${defaultCat.slug},name.eq.${defaultCat.name}`)
+                    .maybeSingle();
+                  if (retryCat?.id) {
+                    effectiveDbCategoryId = retryCat.id;
+                  } else {
+                    throw new Error(
+                      `Cannot update product: Category "${defaultCat.name}" is not set up in the database yet: ${insertCatErr.message}`
+                    );
+                  }
+                }
               }
-            } else {
-              throw new Error(
-                `Cannot update product: category ID "${updates.categoryId}" is not valid. Please select a valid category and try again.`
-              );
             }
           }
+          payload.category_id = effectiveDbCategoryId;
         }
         if (updates.description !== undefined) payload.description = updates.description;
         if (updates.material !== undefined) payload.material = updates.material;

@@ -21,6 +21,7 @@ export const AdminCategoriesPage: React.FC = () => {
   const refreshCategories = async () => {
     await queryClient.invalidateQueries({ queryKey: ['admin-categories'] });
     await queryClient.invalidateQueries({ queryKey: ['categories'] });
+    await queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
   };
 
   const saveNewCategory = async (event: React.FormEvent) => {

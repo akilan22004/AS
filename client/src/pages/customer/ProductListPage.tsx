@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, SlidersHorizontal, Bookmark, Check } from 'lucide-react';
@@ -6,7 +6,7 @@ import { Header } from '../../components/common/Header';
 import { Footer } from '../../components/common/Footer';
 import { WhatsAppBanner } from '../../components/common/WhatsAppBanner';
 import { useShortlist } from '../../context/ShortlistContext';
-import { api } from '../../services/api';
+import { api, DEFAULT_CATEGORIES } from '../../services/api';
 import { Product } from '../../types';
 
 export const ProductListPage: React.FC = () => {
@@ -18,6 +18,13 @@ export const ProductListPage: React.FC = () => {
 
   const { isInShortlist, toggleShortlist } = useShortlist();
 
+  // Dynamic categories from database
+  const categoriesQuery = useQuery({
+    queryKey: ['categories'],
+    queryFn: api.getCategories,
+    initialData: DEFAULT_CATEGORIES,
+  });
+
   // Fetch products from backend
   const { data, isLoading } = useQuery({
     queryKey: ['products', activeCategory, searchQuery],
@@ -28,16 +35,26 @@ export const ProductListPage: React.FC = () => {
       }),
   });
 
+  // Search input debouncer for smooth auto-filtering
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const trimmed = inputSearch.trim();
+      if (trimmed !== searchQuery) {
+        if (trimmed) {
+          searchParams.set('search', trimmed);
+        } else {
+          searchParams.delete('search');
+        }
+        setSearchParams(searchParams, { replace: true });
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [inputSearch, searchQuery, searchParams, setSearchParams]);
+
+  const categoryList = categoriesQuery.data || DEFAULT_CATEGORIES;
   const filterTabs = [
     { label: 'All', value: 'all' },
-    { label: 'Sofas', value: 'sofas' },
-    { label: 'Beds', value: 'beds' },
-    { label: 'Dining', value: 'dining-tables' },
-    { label: 'Wardrobes', value: 'wardrobes' },
-    { label: 'Chairs', value: 'chairs' },
-    { label: 'TV Units', value: 'tv-units' },
-    { label: 'Dressing Tables', value: 'dressing-tables' },
-    { label: 'Storage Cabinets', value: 'storage-cabinets' },
+    ...categoryList.map(c => ({ label: c.name, value: c.slug })),
   ];
 
   const handleCategoryChange = (val: string) => {
