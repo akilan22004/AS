@@ -21,7 +21,6 @@ import {
 import { api, DEFAULT_CATEGORIES } from '../../services/api';
 import { Category, ProductImage } from '../../types';
 import { optimizeImage } from '../../utils/imageOptimizer';
-import { CategoryDropdown } from '../../components/admin/CategoryDropdown';
 
 const MAX_IMAGES_PER_UPLOAD = 20;
 
@@ -63,13 +62,11 @@ export const AdminAddProductPage: React.FC = () => {
     refetchInterval: false,
   });
 
-  const categoriesQuery = useQuery<Category[]>({
+  const { data: categories = DEFAULT_CATEGORIES } = useQuery<Category[]>({
     queryKey: ['admin-categories'],
     queryFn: api.getAdminCategories,
     initialData: DEFAULT_CATEGORIES,
   });
-
-  const categories = categoriesQuery.data || DEFAULT_CATEGORIES;
 
   useEffect(() => {
     const product = productQuery.data;
@@ -96,20 +93,6 @@ export const AdminAddProductPage: React.FC = () => {
       }
     }
   }, [id, categoryId, categories]);
-
-  const handleQuickAddCategory = async (catName: string): Promise<Category | void> => {
-    const slug = catName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    const newCat = await api.createCategory({
-      name: catName,
-      slug,
-      description: `Handcrafted ${catName}`,
-      isVisible: true,
-    });
-    await queryClient.invalidateQueries({ queryKey: ['admin-categories'] });
-    await queryClient.invalidateQueries({ queryKey: ['categories'] });
-    setCategoryId(newCat.id);
-    return newCat;
-  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -256,96 +239,80 @@ export const AdminAddProductPage: React.FC = () => {
   };
 
   return (
-    <div className="w-full min-h-screen bg-[#F7F3EC] flex flex-col font-sans">
-      {/* Top Admin Bar */}
-      <div className="bg-[#241B16] text-[#F7F3EC] border-b border-[#3D2C22] sticky top-0 z-30 shadow-md">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              to="/admin/dashboard"
-              className="p-1.5 rounded-lg hover:bg-white/10 text-[#C8A77D] transition-colors"
-              aria-label="Back to Dashboard"
-            >
-              <ChevronLeft size={20} />
-            </Link>
-            <div className="flex items-center gap-2">
-              <div className="bg-white px-2.5 py-1 rounded-lg border border-[#DDD1C0] shadow-sm flex items-center justify-center">
-                <img
-                  src="/assets/annamalai-logo.png"
-                  alt="Annamalai Furniture Logo"
-                  className="h-6 sm:h-7 w-auto object-contain"
-                />
-              </div>
-              <span className="text-[10px] sm:text-xs font-serif text-[#C8A77D] tracking-widest hidden sm:inline uppercase">
-                Admin Studio
+    <div className="min-w-[320px] max-w-[480px] mx-auto min-h-screen bg-[#F7F3EC] shadow-2xl flex flex-col font-sans relative overflow-x-hidden">
+      {/* Top Mobile Bar */}
+      <div className="bg-[#241B16] text-[#F7F3EC] px-4 py-2 flex items-center justify-between border-b border-[#3D2C22]">
+        <div className="flex items-center gap-3">
+          <Link to="/admin/dashboard" className="p-1 hover:text-[#C8A77D]">
+            <ChevronLeft size={20} />
+          </Link>
+          <div className="flex items-center gap-1.5">
+            <img src="/assets/tree-logo.png" alt="Logo" className="h-6 w-auto object-contain" />
+            <div>
+              <span className="font-serif tracking-widest text-[11px] font-bold uppercase block leading-none">
+                ANNAMALAI
+              </span>
+              <span className="font-serif tracking-[0.2em] text-[7px] text-[#C8A77D] uppercase block mt-0.5 leading-none">
+                FURNITURE
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-white/80">
-            <Link
-              to="/admin/categories"
-              className="text-xs text-[#C8A77D] hover:text-white px-2.5 py-1 rounded-lg hover:bg-white/10 transition-colors"
-            >
-              Manage Categories
-            </Link>
-            <Link
-              to="/admin/dashboard"
-              className="p-1.5 rounded-lg hover:bg-white/10 text-white/80 hover:text-white transition-colors"
-              aria-label="Dashboard"
-            >
-              <User size={18} />
-            </Link>
-          </div>
+        </div>
+        <div className="flex items-center gap-2 text-white/80">
+          <button className="p-1 hover:text-white" aria-label="Notifications">
+            <Bell size={18} />
+          </button>
+          <button className="p-1 hover:text-white" aria-label="Profile">
+            <User size={18} />
+          </button>
         </div>
       </div>
 
       {/* Header Banner */}
-      <div className="bg-gradient-to-b from-[#F2ECE1] to-[#F7F3EC] border-b border-[#EAE2D5]">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-9 h-9 rounded-xl bg-[#EFE9DF] text-[#493326] flex items-center justify-center flex-shrink-0 shadow-sm border border-[#DDD1C0]">
-                <PackagePlus size={20} />
-              </div>
-              <div>
-                <h1 className="font-serif text-xl sm:text-2xl font-bold text-[#241B16] leading-none">
-                  {id ? 'Edit Furniture Piece' : 'Add New Furniture Piece'}
-                </h1>
-                <p className="text-xs text-[#695446] mt-1">
-                  {id ? 'Update specifications, pricing and artisan gallery' : 'Publish a new handcrafted piece to your live website'}
-                </p>
-              </div>
+      <div className="relative px-5 pt-4 pb-3 flex items-center justify-between overflow-hidden bg-gradient-to-b from-[#F2ECE1] to-[#F7F3EC]">
+        <div className="relative z-10 max-w-[260px]">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-8 h-8 rounded-xl bg-[#EFE9DF] text-[#493326] flex items-center justify-center flex-shrink-0">
+              <PackagePlus size={18} />
             </div>
-            {/* Flourish */}
-            <div className="flex items-center gap-2 mt-2 text-xs text-[#B69764]">
-              <span className="w-8 h-[1px] bg-[#C8A77D]"></span>
-              <span>🍃 Solid Wood Handcraft</span>
-              <span className="w-8 h-[1px] bg-[#C8A77D]"></span>
+            <div>
+              <h1 className="font-serif text-[18px] font-bold text-[#241B16] leading-none">
+                {id ? 'Edit Furniture' : 'Add New Furniture'}
+              </h1>
+              <p className="text-[9.5px] text-[#695446] mt-0.5">
+                {id ? 'Update product details and gallery' : 'Add a new product to your collection'}
+              </p>
             </div>
           </div>
+          {/* Leaf flourish */}
+          <div className="flex items-center gap-2 mt-1.5 text-xs text-[#B69764]">
+            <span className="w-8 h-[1px] bg-[#C8A77D]"></span>
+            <span>🍃</span>
+            <span className="w-8 h-[1px] bg-[#C8A77D]"></span>
+          </div>
+        </div>
 
-          {/* Right Armchair Crop (hidden on small mobile, visible on tablet+) */}
-          <div className="hidden sm:block w-32 h-20 overflow-hidden rounded-xl border border-[#DDD1C0] shadow-sm">
-            <img
-              src="/assets/admin-add-armchair.jpg"
-              alt="Handcrafted Armchair"
-              className="w-full h-full object-cover"
-            />
-          </div>
+        {/* Right Armchair Crop */}
+        <div className="w-28 h-20 overflow-hidden flex-shrink-0 rounded-xl opacity-90">
+          <img
+            src="/assets/admin-add-armchair.jpg"
+            alt="Handcrafted Armchair"
+            className="w-full h-full object-cover"
+          />
         </div>
       </div>
 
-      {/* Main Form Container */}
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-6">
-        <div className="bg-[#FCFAF7] border border-[#DDD1C0] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-lg space-y-5">
+      {/* Main Form Card */}
+      <main className="flex-1 px-4 pb-6">
+        <div className="bg-[#FCFAF7] border border-[#DDD1C0] rounded-[28px] p-4 shadow-md space-y-4">
           {/* Product Images Section */}
           <div>
             <div className="flex items-center gap-1.5 mb-1">
               <span className="text-[#8A7569]">🖼</span>
-              <label className="text-xs font-bold text-[#241B16]">Product Gallery</label>
+              <label className="text-[11px] font-bold text-[#241B16]">Product Gallery</label>
             </div>
-            <p className="text-[11px] text-[#7A675B] mb-3">
-              Add photos of your handcrafted piece. Photos automatically upload to secure Supabase storage.
+            <p className="text-[9px] text-[#7A675B] mb-2">
+              Add any number of product photos. Large selections upload in ordered batches.
             </p>
 
             {id && productQuery.isLoading && (
@@ -358,34 +325,34 @@ export const AdminAddProductPage: React.FC = () => {
             )}
 
             {(!id || (!productQuery.isLoading && !productQuery.isError)) && existingImages.length === 0 && (
-              <p className="mb-3 rounded-xl border border-dashed border-[#DDD1C0] px-3 py-4 text-center text-[10px] text-[#7A675B]">
+              <p className="mb-3 rounded-xl border border-dashed border-[#DDD1C0] px-3 py-4 text-center text-[9px] text-[#7A675B]">
                 No product photos saved yet. Add images now or save and add them later.
               </p>
             )}
 
             {existingImages.length > 0 && (
-              <div className="mb-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="mb-3 space-y-2">
                 {existingImages.map((image, index) => (
                   <div key={image.id} className="flex items-center gap-2 rounded-xl border border-[#DDD1C0] bg-[#FAF7F2] p-2">
                     <img
                       src={image.thumbUrl || image.url || image.filePath}
                       alt={image.altText || `${name} view ${index + 1}`}
-                      className="h-14 w-14 rounded-lg object-cover flex-shrink-0"
+                      className="h-14 w-14 rounded-lg object-cover"
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium text-[#241B16]">
-                        {image.altText || `View ${index + 1}`}
+                      <p className="truncate text-[9px] font-medium text-[#241B16]">
+                        {image.altText || `Product view ${index + 1}`}
                       </p>
-                      <p className="text-[10px] text-[#7A675B]">Image {index + 1} of {existingImages.length}</p>
+                      <p className="text-[8px] text-[#7A675B]">Image {index + 1} of {existingImages.length}</p>
                     </div>
                     {id && (
-                      <div className="flex items-center gap-1 flex-shrink-0">
+                      <>
                         <button
                           type="button"
                           aria-label={`Move image ${index + 1} up`}
                           disabled={index === 0}
                           onClick={() => moveImage(index, -1)}
-                          className="rounded p-1 text-[#493326] hover:bg-[#EAE2D5] disabled:opacity-30"
+                          className="rounded p-1 text-[#493326] disabled:opacity-30"
                         >
                           <ArrowUp size={14} />
                         </button>
@@ -394,10 +361,26 @@ export const AdminAddProductPage: React.FC = () => {
                           aria-label={`Move image ${index + 1} down`}
                           disabled={index === existingImages.length - 1}
                           onClick={() => moveImage(index, 1)}
-                          className="rounded p-1 text-[#493326] hover:bg-[#EAE2D5] disabled:opacity-30"
+                          className="rounded p-1 text-[#493326] disabled:opacity-30"
                         >
                           <ArrowDown size={14} />
                         </button>
+                        <label className="cursor-pointer rounded px-1.5 py-1 text-[8px] text-[#493326] hover:bg-[#EFE9DF]">
+                          Replace
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="hidden"
+                            onChange={event => {
+                              const file = event.target.files?.[0];
+                              event.target.value = '';
+                              if (file) manageImage(
+                                () => api.replaceProductImage(id, image.id, file),
+                                'Product image replaced.'
+                              );
+                            }}
+                          />
+                        </label>
                         <button
                           type="button"
                           onClick={() => {
@@ -408,12 +391,12 @@ export const AdminAddProductPage: React.FC = () => {
                               );
                             }
                           }}
-                          className="rounded p-1 text-red-700 hover:bg-red-50"
+                          className="rounded p-1 text-red-700"
                           aria-label={`Delete image ${index + 1}`}
                         >
                           <X size={14} />
                         </button>
-                      </div>
+                      </>
                     )}
                   </div>
                 ))}
@@ -421,7 +404,7 @@ export const AdminAddProductPage: React.FC = () => {
             )}
 
             {/* Tap to Upload Box */}
-            <label className="border-2 border-dashed border-[#C8A77D]/70 bg-[#FAF7F2] hover:bg-[#F4EEE3] rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer transition-colors block text-center mb-3">
+            <label className="border-2 border-dashed border-[#C8A77D]/70 bg-[#FAF7F2] hover:bg-[#F4EEE3] rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors block text-center mb-3">
               <input
                 type="file"
                 multiple
@@ -429,40 +412,48 @@ export const AdminAddProductPage: React.FC = () => {
                 onChange={handleFileChange}
                 className="hidden"
               />
-              <UploadCloud size={28} className="text-[#B69764] mb-1.5" />
-              <span className="font-serif text-sm font-bold text-[#241B16]">
-                Upload Product Images
+              <UploadCloud size={24} className="text-[#B69764] mb-1" />
+              <span className="font-serif text-[12px] font-bold text-[#241B16]">
+                Tap to Upload Images
               </span>
-              <span className="text-xs text-[#8A7569] mt-0.5">
-                JPG, PNG, WebP • Auto-optimized • High-resolution supported
+              <span className="text-[9px] text-[#8A7569] mt-0.5">
+                JPG, PNG, WebP • Up to 10 MB each • No gallery image-count limit
               </span>
             </label>
 
-            {/* Preview of newly selected files */}
-            {previewUrls.length > 0 && (
-              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mb-3">
-                {previewUrls.map((url, idx) => (
-                  <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-[#DDD1C0] shadow-sm group">
-                    <img src={url} alt={`Preview ${idx + 1}`} className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(idx)}
-                      className="absolute top-1 right-1 bg-black/60 hover:bg-black/90 text-white rounded-full p-0.5 transition-colors"
-                      aria-label="Remove image"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Uploaded Images Preview Strip */}
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+              {previewUrls.map((url, idx) => (
+                <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-[#D9CEBF] flex-shrink-0 bg-[#E2D8C9]">
+                  <img src={url} alt={`Upload ${idx}`} className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(idx)}
+                    className="absolute top-1 right-1 w-4 h-4 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-red-700 transition-colors"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+              <label className="w-16 h-16 rounded-xl border-2 border-dashed border-[#C8A77D] flex flex-col items-center justify-center text-[#8A7569] hover:bg-[#FAF7F2] cursor-pointer flex-shrink-0 transition-colors">
+                <input
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                <Plus size={16} />
+                <span className="text-[7.5px] mt-0.5 font-medium">Add More</span>
+              </label>
+            </div>
           </div>
 
           {/* Product Name */}
           <div>
             <div className="flex items-center gap-1.5 mb-1 text-[#241B16]">
-              <Tag size={14} className="text-[#8A7569]" />
-              <label className="text-xs font-bold">
+              <Tag size={13} className="text-[#8A7569]" />
+              <label className="text-[11px] font-bold">
                 Product Name <span className="text-red-600">*</span>
               </label>
             </div>
@@ -472,16 +463,16 @@ export const AdminAddProductPage: React.FC = () => {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Handcrafted Wooden Sofa"
-              className="w-full bg-[#FAF7F2] border border-[#DDD1C0] rounded-xl px-3.5 py-2.5 text-xs text-[#241B16] focus:outline-none focus:border-[#493326]"
+              className="w-full bg-[#FAF7F2] border border-[#DDD1C0] rounded-xl px-3 py-2 text-xs text-[#241B16] focus:outline-none focus:border-[#493326]"
             />
           </div>
 
           {/* Model Code & Category Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
               <div className="flex items-center gap-1.5 mb-1 text-[#241B16]">
-                <Barcode size={14} className="text-[#8A7569]" />
-                <label className="text-xs font-bold">
+                <Barcode size={13} className="text-[#8A7569]" />
+                <label className="text-[11px] font-bold">
                   Model Code <span className="text-red-600">*</span>
                 </label>
               </div>
@@ -491,47 +482,62 @@ export const AdminAddProductPage: React.FC = () => {
                 value={modelCode}
                 onChange={(e) => setModelCode(e.target.value)}
                 placeholder="e.g. AF-SF001"
-                className="w-full bg-[#FAF7F2] border border-[#DDD1C0] rounded-xl px-3.5 py-2.5 text-xs text-[#241B16] font-mono focus:outline-none focus:border-[#493326]"
+                className="w-full bg-[#FAF7F2] border border-[#DDD1C0] rounded-xl px-3 py-2 text-xs text-[#241B16] font-mono focus:outline-none focus:border-[#493326]"
               />
             </div>
-
             <div>
               <div className="flex items-center gap-1.5 mb-1 text-[#241B16]">
-                <Layers size={14} className="text-[#8A7569]" />
-                <label className="text-xs font-bold">
+                <Layers size={13} className="text-[#8A7569]" />
+                <label className="text-[11px] font-bold">
                   Category <span className="text-red-600">*</span>
                 </label>
               </div>
-              {/* Bullet-Proof Interactive Category Dropdown */}
-              <CategoryDropdown
-                categories={categories}
-                selectedId={categoryId}
-                onSelect={(id) => setCategoryId(id)}
-                onQuickAdd={handleQuickAddCategory}
-                isLoading={categoriesQuery.isLoading}
-                error={categoriesQuery.isError ? 'Unable to load categories' : null}
-                onRetry={() => categoriesQuery.refetch()}
-              />
+              <div className="relative">
+                <select
+                  id="category-select"
+                  aria-label="Product Category"
+                  value={categoryId || (categories.length > 0 ? categories[0].id : '')}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  className="w-full bg-[#FAF7F2] border border-[#DDD1C0] rounded-xl px-3 py-2 pr-8 text-xs text-[#241B16] font-medium focus:outline-none focus:border-[#493326] cursor-pointer appearance-none transition-colors"
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id} className="bg-white text-[#241B16] py-1 text-xs">
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#7A675B]">
+                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
+                    <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" fillRule="evenodd"></path>
+                  </svg>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Material & Dimensions */}
-          <div className="space-y-3">
+          {/* Description */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-1 text-[#241B16]">
+              <FileText size={13} className="text-[#8A7569]" />
+              <label className="text-[11px] font-bold">
+                Description <span className="text-red-600">*</span>
+              </label>
+            </div>
+
             <div>
-              <label className="text-xs font-bold text-[#241B16]">Solid Wood Material</label>
+              <label className="text-[11px] font-bold text-[#241B16]">Material</label>
               <input
                 type="text"
                 maxLength={500}
                 value={material}
                 onChange={event => setMaterial(event.target.value)}
-                placeholder="e.g. Solid Teak Wood & Premium Brass Fittings"
-                className="mt-1 w-full rounded-xl border border-[#DDD1C0] bg-[#FAF7F2] px-3.5 py-2.5 text-xs text-[#241B16] focus:outline-none focus:border-[#493326]"
+                className="mt-1 w-full rounded-xl border border-[#DDD1C0] bg-[#FAF7F2] px-3 py-2 text-xs text-[#241B16]"
               />
             </div>
 
-            <div className="grid grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-4 gap-2">
               {[['Length', length, setLength], ['Width', width, setWidth], ['Height', height, setHeight]].map(([label, value, setter]) => (
-                <label key={label as string} className="text-[11px] font-medium text-[#7A675B]">
+                <label key={label as string} className="text-[10px] text-[#7A675B]">
                   {label as string} ({dimensionUnit})
                   <input
                     type="number"
@@ -539,59 +545,49 @@ export const AdminAddProductPage: React.FC = () => {
                     step="0.1"
                     value={value as string}
                     onChange={event => (setter as (value: string) => void)(event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-[#DDD1C0] bg-[#FAF7F2] px-3 py-2 text-xs text-[#241B16] focus:outline-none focus:border-[#493326]"
+                    className="mt-1 w-full rounded-lg border border-[#DDD1C0] bg-[#FAF7F2] px-2 py-1.5 text-xs text-[#241B16]"
                   />
                 </label>
               ))}
-              <label className="text-[11px] font-medium text-[#7A675B]">
+              <label className="text-[10px] text-[#7A675B]">
                 Unit
                 <select
                   value={dimensionUnit}
                   onChange={event => setDimensionUnit(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-[#DDD1C0] bg-[#FAF7F2] px-3 py-2 text-xs text-[#241B16] focus:outline-none focus:border-[#493326]"
+                  className="mt-1 w-full rounded-lg border border-[#DDD1C0] bg-[#FAF7F2] px-2 py-1.5 text-xs text-[#241B16]"
                 >
                   <option value="cm">cm</option>
                   <option value="mm">mm</option>
-                  <option value="in">inches</option>
+                  <option value="in">in</option>
                 </select>
               </label>
             </div>
 
             <div>
-              <label className="text-xs font-bold text-[#241B16]">Artisan Specifications</label>
+              <label className="text-[11px] font-bold text-[#241B16]">Specifications</label>
               <textarea
-                rows={2}
+                rows={3}
                 maxLength={10000}
                 value={specifications}
                 onChange={event => setSpecifications(event.target.value)}
-                placeholder="e.g. Mortise and tenon joinery; natural oil hand-rubbed finish; 10-year timber guarantee."
-                className="mt-1 w-full rounded-xl border border-[#DDD1C0] bg-[#FAF7F2] px-3.5 py-2 text-xs text-[#241B16] focus:outline-none focus:border-[#493326]"
+                className="mt-1 w-full rounded-xl border border-[#DDD1C0] bg-[#FAF7F2] px-3 py-2 text-xs text-[#241B16]"
               />
             </div>
-
-            <div>
-              <div className="flex items-center gap-1.5 mb-1 text-[#241B16]">
-                <FileText size={14} className="text-[#8A7569]" />
-                <label className="text-xs font-bold">
-                  Description <span className="text-red-600">*</span>
-                </label>
-              </div>
-              <textarea
-                rows={3}
-                required
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Enter handcrafted story, comfort notes, and timber provenance..."
-                className="w-full bg-[#FAF7F2] border border-[#DDD1C0] rounded-xl px-3.5 py-2.5 text-xs text-[#241B16] focus:outline-none focus:border-[#493326] leading-relaxed"
-              />
-            </div>
+            <textarea
+              rows={3}
+              required
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Enter handcrafted specifications and features..."
+              className="w-full bg-[#FAF7F2] border border-[#DDD1C0] rounded-xl px-3 py-2 text-xs text-[#241B16] focus:outline-none focus:border-[#493326] leading-relaxed"
+            />
           </div>
 
           {/* Featured Toggle */}
-          <div className="flex items-center justify-between bg-[#FCFAF7] border border-[#DDD1C0] p-3.5 rounded-2xl">
+          <div className="flex items-center justify-between bg-[#FCFAF7] border border-[#DDD1C0] p-3 rounded-2xl">
             <div>
-              <span className="text-xs font-bold text-[#241B16] block">Feature on Homepage</span>
-              <span className="text-[11px] text-[#7A675B] block">Highlight in the Featured Collection on the front page</span>
+              <span className="text-[11px] font-bold text-[#241B16] block">Feature on Homepage</span>
+              <span className="text-[9.5px] text-[#7A675B] block">Highlight in the Featured Collection on the front page</span>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
@@ -600,62 +596,62 @@ export const AdminAddProductPage: React.FC = () => {
                 onChange={(e) => setIsFeatured(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-10 h-6 bg-[#DDD1C0] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#493326]"></div>
+              <div className="w-9 h-5 bg-[#DDD1C0] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#493326]"></div>
             </label>
           </div>
 
           {/* Publish Status Toggle */}
           <div>
-            <label className="block text-xs font-bold text-[#241B16] mb-1.5">
+            <label className="block text-[11px] font-bold text-[#241B16] mb-1.5">
               Publish Status
             </label>
             <div className="bg-[#EFE9DF] p-1 rounded-2xl flex items-center border border-[#DDD1C0]">
               <button
                 type="button"
                 onClick={() => setIsPublished(false)}
-                className={`flex-1 py-2 rounded-xl text-xs font-serif flex items-center justify-center gap-1.5 transition-all ${
+                className={`flex-1 py-1.5 rounded-xl text-xs font-serif flex items-center justify-center gap-1.5 transition-all ${
                   !isPublished
                     ? 'bg-[#493326] text-[#F7F3EC] shadow-sm'
                     : 'text-[#695446] hover:text-[#241B16]'
                 }`}
               >
                 <Save size={13} />
-                <span>Save as Draft</span>
+                <span>Draft</span>
               </button>
               <button
                 type="button"
                 onClick={() => setIsPublished(true)}
-                className={`flex-1 py-2 rounded-xl text-xs font-serif flex items-center justify-center gap-1.5 transition-all ${
+                className={`flex-1 py-1.5 rounded-xl text-xs font-serif flex items-center justify-center gap-1.5 transition-all ${
                   isPublished
                     ? 'bg-[#493326] text-[#F7F3EC] shadow-sm'
                     : 'text-[#695446] hover:text-[#241B16]'
                 }`}
               >
                 <Check size={13} />
-                <span>Publish to Live Website</span>
+                <span>Publish</span>
               </button>
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="pt-2 grid grid-cols-2 gap-2.5">
             <button
               type="button"
               disabled={submitting}
               onClick={() => handleSubmit(false)}
-              className="border-2 border-[#493326] text-[#493326] hover:bg-[#F2ECE1] py-3 rounded-2xl font-serif text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+              className="border border-[#493326] text-[#493326] hover:bg-[#F2ECE1] py-2.5 rounded-2xl font-serif text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
             >
-              <Save size={15} />
+              <Save size={14} />
               <span>Save as Draft</span>
             </button>
             <button
               type="button"
               disabled={submitting}
               onClick={() => handleSubmit(true)}
-              className="bg-[#493326] hover:bg-[#38251C] text-[#F7F3EC] py-3 rounded-2xl font-serif text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer disabled:opacity-50"
+              className="bg-[#493326] hover:bg-[#38251C] text-[#F7F3EC] py-2.5 rounded-2xl font-serif text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-md"
             >
-              <UploadCloud size={15} />
-              <span>{submitting ? 'Publishing to Website...' : 'Publish Product to Website'}</span>
+              <UploadCloud size={14} />
+              <span>{submitting ? 'Publishing...' : 'Publish Product'}</span>
             </button>
           </div>
         </div>

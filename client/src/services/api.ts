@@ -225,13 +225,11 @@ export const api = {
           .order('display_order', { ascending: true });
 
         if (error) surfaceSupabaseError('loading categories', error);
-        if (!error && data) {
-          const dbCategories = data.map(mapSupabaseCategory);
-          // If database has categories, include them. If some default categories are missing,
-          // include default categories that aren't already represented by slug
-          const existingSlugs = new Set(dbCategories.map(c => c.slug));
-          const missingDefaults = DEFAULT_CATEGORIES.filter(c => c.isVisible && !existingSlugs.has(c.slug));
-          return [...dbCategories, ...missingDefaults];
+        if (!error && data && data.length > 0) {
+          return data.map(mapSupabaseCategory);
+        }
+        if (!error && data && data.length === 0) {
+          return DEFAULT_CATEGORIES.filter(c => c.isVisible);
         }
       } catch (error) {
         if (!hasBackendApi) return DEFAULT_CATEGORIES.filter(c => c.isVisible);
@@ -251,38 +249,31 @@ export const api = {
           .order('display_order', { ascending: true });
 
         if (error) surfaceSupabaseError('loading admin categories', error);
-        if (!error && data) {
-          const dbCategories = data.map(mapSupabaseCategory);
-          const existingSlugs = new Set(dbCategories.map(c => c.slug));
-          const missing = DEFAULT_CATEGORIES.filter(c => !existingSlugs.has(c.slug));
+        if (!error && data && data.length > 0) {
+          return data.map(mapSupabaseCategory);
+        }
 
-          // If there are missing default categories, attempt to insert them into Supabase
-          if (missing.length > 0) {
-            try {
-              const seedPayload = missing.map(c => ({
-                id: c.id,
-                name: c.name,
-                slug: c.slug,
-                description: c.description,
-                cover_image: c.coverImage,
-                display_order: c.displayOrder,
-                is_visible: c.isVisible,
-              }));
-              const { data: inserted, error: insertError } = await supabase
-                .from('categories')
-                .upsert(seedPayload, { onConflict: 'slug' })
-                .select();
-              if (!insertError && inserted && inserted.length > 0) {
-                return [...dbCategories, ...inserted.map(mapSupabaseCategory)];
-              }
-            } catch {
-              // Seeding fallback — return union of db categories and missing defaults
+        // If categories table in Supabase is currently empty, auto-seed default categories into the database
+        if (!error && data && data.length === 0) {
+          try {
+            const seedPayload = DEFAULT_CATEGORIES.map(c => ({
+              id: c.id,
+              name: c.name,
+              slug: c.slug,
+              description: c.description,
+              cover_image: c.coverImage,
+              display_order: c.displayOrder,
+              is_visible: c.isVisible,
+            }));
+            const { data: inserted, error: insertError } = await supabase
+              .from('categories')
+              .upsert(seedPayload, { onConflict: 'id' })
+              .select();
+            if (!insertError && inserted && inserted.length > 0) {
+              return inserted.map(mapSupabaseCategory);
             }
-            return [...dbCategories, ...missing];
-          }
-
-          if (dbCategories.length > 0) {
-            return dbCategories;
+          } catch {
+            // Seeding will silently fall back to DEFAULT_CATEGORIES if user lacks direct write permission
           }
           return DEFAULT_CATEGORIES;
         }
@@ -678,64 +669,59 @@ export const api = {
         if (existingCat?.id) {
           effectiveDbCategoryId = existingCat.id;
         } else {
-          // If not found by ID, look up by slug
+          // If not found by ID, look up by slug or name in case the DB has a different ID for this category
           const defaultCat = DEFAULT_CATEGORIES.find(c => c.id === categoryId);
-          const targetSlug = defaultCat?.slug || categoryId.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-          const { data: catBySlug } = await supabase
-            .from('categories')
-            .select('id')
-            .eq('slug', targetSlug)
-            .maybeSingle();
-
-          if (catBySlug?.id) {
-            effectiveDbCategoryId = catBySlug.id;
-          } else if (defaultCat) {
-            // Category does not exist at all in database -> attempt insert
-            const { data: newCat, error: insertCatErr } = await supabase
+          if (defaultCat) {
+            const { data: catBySlug } = await supabase
               .from('categories')
-              .insert({
-                id: defaultCat.id,
-                name: defaultCat.name,
-                slug: defaultCat.slug,
-                description: defaultCat.description,
-                cover_image: defaultCat.coverImage,
-                display_order: defaultCat.displayOrder,
-                is_visible: defaultCat.isVisible,
-              })
               .select('id')
+              .or(`slug.eq.${defaultCat.slug},name.eq.${defaultCat.name}`)
               .maybeSingle();
 
-            if (!insertCatErr && newCat?.id) {
-              effectiveDbCategoryId = newCat.id;
+            if (catBySlug?.id) {
+              effectiveDbCategoryId = catBySlug.id;
             } else {
-              // Retry lookup in case another tab or process created it
-              const { data: retryCat } = await supabase
+              // Category does not exist at all in database -> attempt insert
+              const { data: newCat, error: insertCatErr } = await supabase
                 .from('categories')
+                .insert({
+                  id: defaultCat.id,
+                  name: defaultCat.name,
+                  slug: defaultCat.slug,
+                  description: defaultCat.description,
+                  cover_image: defaultCat.coverImage,
+                  display_order: defaultCat.displayOrder,
+                  is_visible: defaultCat.isVisible,
+                })
                 .select('id')
-                .eq('slug', defaultCat.slug)
                 .maybeSingle();
-              if (retryCat?.id) {
-                effectiveDbCategoryId = retryCat.id;
-              } else {
-                // As a safe fallback to prevent FK 23503 crash, use any existing category from DB
-                const { data: fallbackCat } = await supabase.from('categories').select('id').limit(1).maybeSingle();
-                if (fallbackCat?.id) {
-                  effectiveDbCategoryId = fallbackCat.id;
+
+              if (!insertCatErr && newCat?.id) {
+                effectiveDbCategoryId = newCat.id;
+              } else if (insertCatErr) {
+                // If insert failed due to duplicate or RLS, try one more lookup
+                const { data: retryCat } = await supabase
+                  .from('categories')
+                  .select('id')
+                  .or(`slug.eq.${defaultCat.slug},name.eq.${defaultCat.name}`)
+                  .maybeSingle();
+                if (retryCat?.id) {
+                  effectiveDbCategoryId = retryCat.id;
                 } else {
                   throw new Error(
-                    `Cannot create product: Category "${defaultCat.name}" is not set up in the database yet: ${insertCatErr?.message || 'missing category'}. Please create a category first.`
+                    `Cannot create product: Category "${defaultCat.name}" is not set up in the database yet: ${insertCatErr.message}. Please create the category in Category Management or run the setup script in Supabase SQL Editor.`
                   );
                 }
               }
             }
           } else {
-            // Check if any category exists in DB as fallback
+            // Check if any category exists in DB
             const { data: anyCat } = await supabase.from('categories').select('id').limit(1).maybeSingle();
             if (anyCat?.id) {
               effectiveDbCategoryId = anyCat.id;
             } else {
               throw new Error(
-                `Cannot create product: Category "${categoryId}" was not found in the database. Please create a category in Category Management first.`
+                `Cannot create product: Category ID "${categoryId}" was not found in the database. Please create a category in Category Management first.`
               );
             }
           }
@@ -823,55 +809,46 @@ export const api = {
             effectiveDbCategoryId = existingCat.id;
           } else {
             const defaultCat = DEFAULT_CATEGORIES.find(c => c.id === updates.categoryId);
-            const targetSlug = defaultCat?.slug || updates.categoryId.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-            const { data: catBySlug } = await supabase
-              .from('categories')
-              .select('id')
-              .eq('slug', targetSlug)
-              .maybeSingle();
-
-            if (catBySlug?.id) {
-              effectiveDbCategoryId = catBySlug.id;
-            } else if (defaultCat) {
-              const { data: newCat, error: insertCatErr } = await supabase
+            if (defaultCat) {
+              const { data: catBySlug } = await supabase
                 .from('categories')
-                .insert({
-                  id: defaultCat.id,
-                  name: defaultCat.name,
-                  slug: defaultCat.slug,
-                  description: defaultCat.description,
-                  cover_image: defaultCat.coverImage,
-                  display_order: defaultCat.displayOrder,
-                  is_visible: defaultCat.isVisible,
-                })
                 .select('id')
+                .or(`slug.eq.${defaultCat.slug},name.eq.${defaultCat.name}`)
                 .maybeSingle();
 
-              if (!insertCatErr && newCat?.id) {
-                effectiveDbCategoryId = newCat.id;
+              if (catBySlug?.id) {
+                effectiveDbCategoryId = catBySlug.id;
               } else {
-                const { data: retryCat } = await supabase
+                const { data: newCat, error: insertCatErr } = await supabase
                   .from('categories')
+                  .insert({
+                    id: defaultCat.id,
+                    name: defaultCat.name,
+                    slug: defaultCat.slug,
+                    description: defaultCat.description,
+                    cover_image: defaultCat.coverImage,
+                    display_order: defaultCat.displayOrder,
+                    is_visible: defaultCat.isVisible,
+                  })
                   .select('id')
-                  .eq('slug', defaultCat.slug)
                   .maybeSingle();
-                if (retryCat?.id) {
-                  effectiveDbCategoryId = retryCat.id;
-                } else {
-                  const { data: fallbackCat } = await supabase.from('categories').select('id').limit(1).maybeSingle();
-                  if (fallbackCat?.id) {
-                    effectiveDbCategoryId = fallbackCat.id;
+
+                if (!insertCatErr && newCat?.id) {
+                  effectiveDbCategoryId = newCat.id;
+                } else if (insertCatErr) {
+                  const { data: retryCat } = await supabase
+                    .from('categories')
+                    .select('id')
+                    .or(`slug.eq.${defaultCat.slug},name.eq.${defaultCat.name}`)
+                    .maybeSingle();
+                  if (retryCat?.id) {
+                    effectiveDbCategoryId = retryCat.id;
                   } else {
                     throw new Error(
-                      `Cannot update product: Category "${defaultCat.name}" is not set up in the database yet: ${insertCatErr?.message || 'missing category'}`
+                      `Cannot update product: Category "${defaultCat.name}" is not set up in the database yet: ${insertCatErr.message}`
                     );
                   }
                 }
-              }
-            } else {
-              const { data: anyCat } = await supabase.from('categories').select('id').limit(1).maybeSingle();
-              if (anyCat?.id) {
-                effectiveDbCategoryId = anyCat.id;
               }
             }
           }
