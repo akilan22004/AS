@@ -9,25 +9,12 @@ async function getSupabaseAdmin(): Promise<AdminUser | null> {
   const session = sessionData.session;
   if (!session) return null;
 
-  let isAuthorized = false;
-  const email = session.user.email?.toLowerCase();
-  const adminEmails = ['akilanr05@gmail.com', 'aravindhjsc14@gmail.com'];
-
-  try {
-    const { data: authorized, error: authorizationError } = await supabase.rpc('is_admin');
-    if (!authorizationError && authorized === true) {
-      isAuthorized = true;
-    }
-  } catch {
-    // Ignore RPC failure; fallback to admin email list below
+  const { data: isAuthorized, error: authorizationError } = await supabase.rpc('is_admin');
+  if (authorizationError) {
+    throw new Error('Could not verify admin authorization. Confirm the Supabase migrations have been applied.');
   }
 
-  // Fallback: If is_admin RPC has not been created or failed, verify against authorized admin emails
-  if (!isAuthorized && email && adminEmails.includes(email)) {
-    isAuthorized = true;
-  }
-
-  if (!isAuthorized || !session.user.email) {
+  if (isAuthorized !== true || !session.user.email) {
     await supabase.auth.signOut();
     return null;
   }

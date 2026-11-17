@@ -1,66 +1,35 @@
-# Supabase preparation and manual setup
+# Supabase setup and deployment verification
 
-This repository is prepared for a staged migration, not a completed migration or deployment. The existing Express/Prisma/SQLite API and local upload handling remain in use. No product records or images are automatically copied to Supabase.
+The deployed Vercel project is a static Vite SPA. Its production catalog and Admin Portal use Supabase Auth, PostgREST, and Storage directly from the browser using only the publishable/anon key. The Express app in `server/` is not deployed by `vercel.json`.
 
-## What is prepared
+## Required Vercel build environment
 
-- Versioned PostgreSQL/RLS migrations under `supabase/migrations`.
-- Supabase Auth Email/Password login for the existing Admin Portal.
-- An Express authorization bridge that verifies Supabase users and checks membership in the existing `public.admin_users` table.
-- A `furniture_image` bucket policy migration for public reads and authorized-admin writes.
-- Environment-based API URL and local Vite proxy configuration.
-- A database-aware API health endpoint.
-- Static SPA rewrite configuration for hosting the frontend separately.
+Configure these values in Vercel for every environment that should build the app:
 
-Catalog reads/writes, product-image uploads/replacements/deletions, and image URL conversion still use the existing Express/SQLite/local-storage implementation. The Admin Portal uses Supabase Email/Password Auth without a TOTP prompt, but sign-in remains dependent on the target project migrations and its two pre-authorized accounts. No live Supabase authentication or database test has been performed.
+- `VITE_SUPABASE_URL`: the Supabase project URL (origin only, not a `/rest/v1` endpoint).
+- `VITE_SUPABASE_PUBLISHABLE_KEY`: the project's publishable/anon key.
 
-The legacy local `setup-admin.ts`/TOTP utilities are not part of the current Admin login flow. Do not run `npm run setup:admin`: it can overwrite local administrator passwords and authenticator secrets. No Supabase Auth users or admin-account rows were created or changed as part of this code update.
+Vite embeds these values at build time. The ignored `.env.local` and `client/.env.local` files are local-only and are not deployed. Production builds now fail explicitly if the URL or key is missing or if a secret/service-role key is provided.
 
-## Local environment setup
+`VITE_API_BASE_URL` is optional and is only needed for API fallback routes. It must be an HTTPS origin for a separately deployed API. The existing Express service uses SQLite sessions and local image files; it must not be assumed to run reliably as a Vercel serverless API without a separate persistence migration.
 
-1. Copy `server/.env.example` to the ignored `server/.env`; preserve the existing local database and authentication configuration.
-2. The Vite configuration reads the project-root `.env.local` as well as `client/.env.local`. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`, or the existing `VITE_SUPABASE_ANON_KEY` alias, there.
-3. The Express service also reads the project-root `.env.local` for those Vite-prefixed URL/key values. For production, set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in the server's environment instead. Never configure a service-role/secret key.
-4. Set `ADMIN_AUTH_PROVIDER=supabase` explicitly in `server/.env` for clarity; Supabase is also the runtime default.
-5. To test against local Supabase, set `VITE_DEV_API_PROXY_TARGET` to the local Express origin and set the API's `CORS_ORIGIN` to the exact browser origin.
+## Supabase schema and access controls
 
-## Supabase project setup (manual; not yet verified against a live project)
+1. Back up the target project and verify it is the intended environment before applying database changes.
+2. Apply the versioned SQL files in `supabase/migrations` in order. The migrations expect the existing `public.admin_users.user_id` mapping for `public.is_admin()`. Do not replace admin records or run legacy provisioning scripts against production.
+3. Confirm the `categories`, `products`, `product_images`, `website_settings`, and `admin_users` tables exist; `public.is_admin()` returns true only for authorized authenticated users; and RLS is enabled with the checked-in policies.
+4. Confirm the existing `furniture_image` bucket exists. The storage migration makes it public-read, restricts accepted uploads to JPEG/PNG/WebP and 10 MiB, and limits bucket writes to authorized admins. Review current bucket policies before applying migrations.
+5. In Supabase Auth, enable Email/Password sign-in and disable public sign-ups. Ensure the intended admin Auth users are mapped to `public.admin_users.user_id`. Public email matching is not a substitute for this mapping or RLS.
+6. Configure Supabase Auth's Site URL and exact allowed redirect URLs for the production domain and any preview domains that require auth callbacks. Do not use wildcard production redirects.
 
-1. Back up the target Supabase database and inspect existing policies on `furniture_image`. The storage migration replaces its named policies and adds restrictive, bucket-scoped write guards (so existing broad write policies cannot grant access to this bucket); it changes the existing bucket to public-read, limits uploads to 10 MiB, and permits JPEG, PNG, and WebP. Confirm these consequences and any current bucket-specific read policies before applying it.
-2. Apply the migrations in order with the Supabase CLI after linking the intended project:
+The browser uses only the publishable/anon key. Never place a service-role/secret key in a `VITE_` variable, the client bundle, or Git. RLS and Storage policies remain enabled; do not make admin tables writable by `anon`.
 
-   ```sh
-   supabase link --project-ref YOUR_PROJECT_REF
-   supabase db push
-   ```
+## Production checks
 
-3. In Supabase Auth, enable Email provider sign-in and disable public sign-ups. Create exactly two users through the trusted Auth dashboard/operator process; do not add a public registration route.
-4. Preserve the existing `public.admin_users` rows. The authorization function uses its `user_id` column and does not create or populate a second admin table. Verify both rows map to existing Auth users without displaying their IDs:
+- Build the frontend with the same environment variables configured in Vercel.
+- Test public catalog reads and image URLs while signed out.
+- Test authorized admin login, `is_admin()` authorization, category/product create-read-update-delete, image upload/replace/reorder/delete, and sign-out.
+- Test a non-admin account and anonymous writes; both must be denied by RLS/Storage policies.
+- Verify changes in Supabase after each mutation and inspect the Vercel build/runtime logs.
 
-   ```sql
-   select
-     count(*) as admin_user_rows,
-     count(auth_users.id) as matching_auth_users
-   from public.admin_users as admins
-   left join auth.users as auth_users on auth_users.id = admins.user_id;
-   ```
-
-   Expect two rows and two matches. Do not grant table access to `anon` or expose admin assignment in the application.
-5. Configure Supabase Auth Site URL and allowed redirect URLs for the intended local origins and, later, the chosen frontend host. Do not use wildcard production redirects.
-6. Configure `ADMIN_AUTH_PROVIDER=supabase` on the API. The client always uses Supabase Email/Password Auth. Keep `CORS_ORIGIN` restricted to the exact frontend origin.
-7. Test both authorized accounts with their Supabase Auth email/password, a wrong password, a valid non-admin Supabase user, expired token, and direct protected API access. Test a non-production project first. The Admin Portal does not request or verify TOTP.
-
-The server uses the publishable/anon key with the caller's JWT to call Supabase Auth and the `is_admin()` RPC. A service-role key is not needed for this bridge and must never be supplied to it. The `is_admin()` authorization checks the caller's authenticated UUID against `admin_users.user_id`; it does not depend on MFA assurance level.
-
-## Remaining migration work before cutover
-
-- Implement and verify Supabase-backed catalog reads and admin CRUD while preserving existing API response contracts.
-- Migrate/validate existing products, categories, settings, and audit records with repeatable and reversible data scripts.
-- Implement Storage upload, replacement, cleanup, and URL mapping against `furniture_image`; validate both admin-only mutations and public viewing.
-- Decide how the retained Express backend will be hosted or which endpoints should become Edge Functions. Do not move server-only work into the browser.
-- Add live integration tests against a non-production Supabase project, including RLS authorization, Email/Password sign-in, CORS, Storage MIME/size limits, and database rollback/recovery.
-- Configure production TLS, frontend/API origins, trusted proxy hops, secrets, backups, monitoring, and redirect allowlists before any deployment.
-
-## Hosting preparation
-
-The React/Vite SPA can be hosted as static assets. For Vercel, select `client` as the project root; `client/vercel.json` supplies SPA history fallback and Vite's production output is `dist`. The Express API must remain on a Node-compatible backend host until its existing SQLite, session, and local-file responsibilities are migrated. A static frontend host alone cannot run that backend. No live deployment was performed.
+The repository's `deployment-reports/FINAL_VERIFICATION_REPORT.md` records that the catalog tables and authorization function were pending at the time of that report. A later successful frontend build does not prove that the remote database was migrated. The current environment has no authenticated Vercel CLI session, and direct read-only Supabase checks are blocked by network connectivity; remote migration, login, CRUD, and upload behavior therefore remain unverified here.

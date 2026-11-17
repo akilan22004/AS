@@ -597,6 +597,7 @@ export const api = {
         }
       } catch (err) {
         if (supabaseProductCreated) throw err;
+        preserveProductionError(err);
         console.warn('[Supabase] createProduct caught error, falling back to local API:', err);
       }
     }
@@ -622,7 +623,12 @@ export const api = {
         if (updates.isPublished !== undefined) payload.is_published = updates.isPublished;
         payload.updated_at = new Date().toISOString();
 
-        const { error: updateErr } = await supabase.from('products').update(payload).eq('id', id);
+        const { error: updateErr } = await supabase
+          .from('products')
+          .update(payload)
+          .eq('id', id)
+          .select('id')
+          .single();
         if (updateErr) throw updateErr;
 
         // Upload any newly attached images to Supabase Storage
@@ -678,26 +684,40 @@ export const api = {
           if (clean) pathsToDelete.add(clean);
         }
 
-        // Read file path first to delete from Storage
-        const { data: img } = await supabase.from('product_images').select('file_path').eq('id', imageId).maybeSingle();
+        const { data: img, error: readError } = await supabase
+          .from('product_images')
+          .select('file_path')
+          .eq('id', imageId)
+          .maybeSingle();
+        if (readError) throw readError;
         if (img?.file_path) {
           const cleanPath = extractStoragePath(img.file_path);
           if (cleanPath) pathsToDelete.add(cleanPath);
         }
 
+        const { data: deletedImage, error: dbErr } = await supabase
+          .from('product_images')
+          .delete()
+          .eq('id', imageId)
+          .select('id')
+          .maybeSingle();
+        if (dbErr) throw dbErr;
+        if (!deletedImage) throw new Error('Product image was not found or could not be deleted.');
+
+        supabaseDeleted = true;
         if (pathsToDelete.size > 0) {
-          const { error: remErr } = await supabase.storage.from('furniture_image').remove(Array.from(pathsToDelete));
-          if (remErr) {
-            console.warn('[Supabase Storage] deleteProductImage remove warning:', remErr.message);
+          const { error: removeError } = await supabase.storage
+            .from('furniture_image')
+            .remove(Array.from(pathsToDelete));
+          if (removeError) {
+            throw new Error(`Image record deleted, but Supabase Storage cleanup failed: ${removeError.message}`);
           }
         }
-
-        const { error: dbErr } = await supabase.from('product_images').delete().eq('id', imageId);
-        if (!dbErr) {
-          supabaseDeleted = true;
-        }
-      } catch (err) {
-        console.warn('[Supabase] deleteProductImage caught warning, proceeding to backend API:', err);
+        return;
+      } catch (error) {
+        if (supabaseDeleted) throw error;
+        preserveProductionError(error);
+        console.warn('[Supabase] deleteProductImage caught warning, proceeding to backend API:', error);
       }
     }
     await fetchJson<void>(`${API_BASE}/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(imageId)}`, {
@@ -714,7 +734,13 @@ export const api = {
 
     if (supabase) {
       try {
-        const { data: oldImg } = await supabase.from('product_images').select('file_path').eq('id', imageId).maybeSingle();
+        const { data: oldImg, error: readError } = await supabase
+          .from('product_images')
+          .select('file_path')
+          .eq('id', imageId)
+          .maybeSingle();
+        if (readError) throw readError;
+        if (!oldImg) throw new Error('Product image was not found.');
         if (oldImg?.file_path) {
           oldStoragePath = extractStoragePath(oldImg.file_path);
         }
@@ -725,35 +751,40 @@ export const api = {
           .from('furniture_image')
           .upload(storagePath, image, { contentType: image.type, upsert: true });
 
-        if (uploadErr) {
-          console.warn('[Supabase Storage] upload replacement failed, falling back to backend API:', uploadErr.message);
-        } else if (storageData) {
-          newStoragePath = storageData.path;
-          const { error: dbErr } = await supabase.from('product_images').update({ file_path: storageData.path }).eq('id', imageId);
-          if (!dbErr) {
-            replacedInSupabase = true;
-          }
+        if (uploadErr) throw uploadErr;
+        newStoragePath = storageData.path;
+        const { error: dbErr } = await supabase
+          .from('product_images')
+          .update({ file_path: storageData.path })
+          .eq('id', imageId)
+          .select('id')
+          .single();
+        if (dbErr) {
+          await supabase.storage.from('furniture_image').remove([newStoragePath]);
+          throw dbErr;
         }
-      } catch (err) {
-        console.warn('[Supabase] replaceProductImage caught warning, proceeding to backend API:', err);
+        replacedInSupabase = true;
+      } catch (error) {
+        preserveProductionError(error);
+        console.warn('[Supabase] replaceProductImage caught warning, proceeding to backend API:', error);
       }
     }
 
-    // Always update database record via backend API if Supabase table does not exist or failed
+    if (replacedInSupabase && supabase) {
+      if (oldStoragePath && oldStoragePath !== newStoragePath) {
+        const { error } = await supabase.storage.from('furniture_image').remove([oldStoragePath]);
+        if (error) throw new Error(`Image replaced, but the previous file could not be removed: ${error.message}`);
+      }
+      return;
+    }
+
     const formData = new FormData();
     formData.append('image', image);
     await fetchFormData<void>(
       `${API_BASE}/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(imageId)}`,
       formData,
       'PUT'
-    ).catch(err => {
-      if (!replacedInSupabase) throw err;
-    });
-
-    // Delete previous image from Supabase Storage now that replacement is confirmed
-    if (supabase && oldStoragePath && oldStoragePath !== newStoragePath) {
-      await supabase.storage.from('furniture_image').remove([oldStoragePath]).catch(() => {});
-    }
+    );
   },
 
   reorderProductImages: async (
@@ -762,12 +793,20 @@ export const api = {
   ): Promise<void> => {
     if (supabase) {
       try {
-        await Promise.all(
-          orders.map(o => supabase!.from('product_images').update({ display_order: o.order }).eq('id', o.id))
+        const client = supabase;
+        const results = await Promise.all(
+          orders.map(o => client
+            .from('product_images')
+            .update({ display_order: o.order })
+            .eq('id', o.id)
+            .select('id')
+            .single())
         );
+        const failedUpdate = results.find(result => result.error);
+        if (failedUpdate?.error) throw failedUpdate.error;
         return;
-      } catch {
-        // Fallback
+      } catch (error) {
+        preserveProductionError(error);
       }
     }
     await fetchJson<void>(`${API_BASE}/products/${encodeURIComponent(productId)}/images/reorder`, {
@@ -788,16 +827,11 @@ export const api = {
           if (clean) pathsToDelete.add(clean);
         });
 
-        // 2. Check storage folder products/${id}
-        const { data: folderFiles } = await supabase.storage.from('furniture_image').list(`products/${id}`);
-        if (folderFiles && folderFiles.length > 0) {
-          folderFiles.forEach(f => {
-            if (f.name) pathsToDelete.add(`products/${id}/${f.name}`);
-          });
-        }
-
-        // 3. Read image paths from product_images table if it exists
-        const { data: images } = await supabase.from('product_images').select('file_path').eq('product_id', id);
+        const { data: images, error: readError } = await supabase
+          .from('product_images')
+          .select('file_path')
+          .eq('product_id', id);
+        if (readError) throw readError;
         if (images && images.length > 0) {
           images.forEach(i => {
             const clean = extractStoragePath(i.file_path);
@@ -805,26 +839,32 @@ export const api = {
           });
         }
 
-        // 4. Delete all collected files from furniture_image bucket
+        const { data: deletedProduct, error: deleteError } = await supabase
+          .from('products')
+          .delete()
+          .eq('id', id)
+          .select('id')
+          .maybeSingle();
+        if (deleteError) throw deleteError;
+        if (!deletedProduct) throw new Error('Product was not found or could not be deleted.');
+
+        supabaseDeleted = true;
         if (pathsToDelete.size > 0) {
-          const { error: remErr } = await supabase.storage
+          const { error: removeError } = await supabase.storage
             .from('furniture_image')
             .remove(Array.from(pathsToDelete));
-          if (remErr) console.warn('[Supabase Storage] deleteProduct remove error:', remErr.message);
+          if (removeError) {
+            throw new Error(`Product deleted, but Supabase Storage cleanup failed: ${removeError.message}`);
+          }
         }
-
-        // 5. Delete product record (cascades to product_images)
-        const { error: prodDelErr } = await supabase.from('products').delete().eq('id', id);
-        if (!prodDelErr) {
-          supabaseDeleted = true;
-        }
-      } catch (err) {
-        console.warn('[Supabase] deleteProduct warning, proceeding to backend API:', err);
+        return;
+      } catch (error) {
+        if (supabaseDeleted) throw error;
+        preserveProductionError(error);
+        console.warn('[Supabase] deleteProduct warning, proceeding to backend API:', error);
       }
     }
-    await fetchJson<void>(`${API_BASE}/products/${id}`, { method: 'DELETE' }).catch(err => {
-      if (!supabaseDeleted) throw err;
-    });
+    await fetchJson<void>(`${API_BASE}/products/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
   // Realtime Subscriptions

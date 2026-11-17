@@ -14,6 +14,10 @@ if (Boolean(supabaseUrl) !== Boolean(publishableKey)) {
   throw new Error('Configure both VITE_SUPABASE_URL and a publishable/anon key, or leave both empty.');
 }
 
+if (!import.meta.env.DEV && (!supabaseUrl || !publishableKey)) {
+  throw new Error('Production builds require VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.');
+}
+
 if (/service[_-]?role|sb_secret_/i.test(publishableKey)) {
   throw new Error('A Supabase service-role/secret key must never be configured in the frontend.');
 }
