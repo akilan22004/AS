@@ -13,6 +13,8 @@ import {
   CheckCircle,
   ExternalLink,
   Pencil,
+  Search,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -24,6 +26,7 @@ export const AdminDashboardPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Queries
   const statsQuery = useQuery({
@@ -76,136 +79,185 @@ export const AdminDashboardPage: React.FC = () => {
 
   const stats = statsQuery.data;
   const products: Product[] = productsQuery.data?.items || [];
-  return (
-    <div className="min-w-[320px] max-w-[640px] mx-auto bg-[#F7F3EC] shadow-2xl min-h-screen flex flex-col font-sans">
-      {/* Top Bar */}
-      <header className="bg-[#241B16] text-[#F7F3EC] px-4 py-3 flex flex-wrap items-center justify-between gap-y-2 border-b border-[#3D2C22]">
-        <div className="flex items-center gap-2">
-          <img src="/assets/tree-logo.png" alt="Logo" className="h-6 w-auto object-contain" />
-          <div>
-            <h1 className="font-serif tracking-wider text-xs font-bold uppercase">ANNAMALAI</h1>
-            <p className="font-serif tracking-widest text-[7px] text-[#C8A77D] uppercase">ADMIN DASHBOARD</p>
-          </div>
-        </div>
 
-        <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 sm:w-auto sm:justify-end">
-          <Link
-            to="/admin/categories"
-            className="text-[11px] text-[#C8A77D] hover:underline font-serif"
-          >
-            Categories
-          </Link>
-          <span className="text-[#594338]">•</span>
-          <Link
-            to="/admin/products/new"
-            className="text-[11px] text-[#C8A77D] hover:underline font-serif"
-          >
-            + Add Model
-          </Link>
-          <span className="text-[#594338]">•</span>
-          <Link
-            to="/admin/media"
-            className="text-[11px] text-[#C8A77D] hover:underline font-serif"
-          >
-            Media Library
-          </Link>
-          <span className="text-[#594338]">•</span>
-          <a
-            href="/"
-            onClick={(e) => {
-              if (!e.ctrlKey && !e.metaKey) {
-                e.preventDefault();
-                navigate('/');
-              }
-            }}
-            className="text-[11px] text-[#C8A77D] hover:underline flex items-center gap-1 font-serif cursor-pointer"
-            title="View live website"
-          >
-            <span>View Site</span>
-            <ExternalLink size={12} />
-          </a>
-          <button
-            onClick={handleLogout}
-            className="p-1.5 text-white/80 hover:text-white"
-            title="Logout"
-          >
-            <LogOut size={16} />
-          </button>
+  const filteredProducts = products.filter(p =>
+    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.modelCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.category?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="w-full min-h-screen bg-[#F7F3EC] flex flex-col font-sans">
+      {/* Top Admin Header Bar */}
+      <header className="bg-[#241B16] text-[#F7F3EC] border-b border-[#3D2C22] sticky top-0 z-30 shadow-md">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-y-3">
+          <div className="flex items-center gap-3">
+            <div className="bg-white px-2.5 py-1 rounded-lg border border-[#DDD1C0] shadow-sm flex items-center justify-center">
+              <img
+                src="/assets/annamalai-logo.png"
+                alt="Annamalai Furniture Logo"
+                className="h-6 sm:h-7 w-auto object-contain"
+              />
+            </div>
+            <div>
+              <h1 className="font-serif tracking-widest text-xs sm:text-sm font-bold text-white uppercase leading-none">
+                ANNAMALAI FURNITURE
+              </h1>
+              <p className="font-serif tracking-[0.2em] text-[8px] text-[#C8A77D] uppercase mt-0.5 leading-none">
+                ADMIN CONSOLE
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-4 text-xs font-serif">
+            <Link
+              to="/admin/categories"
+              className="text-[#C8A77D] hover:text-white px-2.5 py-1 rounded-lg hover:bg-white/10 transition-colors"
+            >
+              Categories
+            </Link>
+            <Link
+              to="/admin/media"
+              className="text-[#C8A77D] hover:text-white px-2.5 py-1 rounded-lg hover:bg-white/10 transition-colors"
+            >
+              Media Library
+            </Link>
+            <Link
+              to="/"
+              className="text-[#C8A77D] hover:text-white px-2.5 py-1 rounded-lg hover:bg-white/10 flex items-center gap-1 transition-colors"
+              title="View live website"
+            >
+              <span>View Site</span>
+              <ExternalLink size={12} />
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+              title="Logout"
+              aria-label="Logout"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="flex-1 p-4 space-y-4">
+      {/* Main Studio Body */}
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8 space-y-6">
         {/* Feedback alert */}
         {feedback && (
-          <div className="bg-[#EAE2D5] border border-[#B69764] text-[#241B16] px-3 py-2 rounded-xl text-xs flex items-center gap-2 shadow-sm animate-fadeIn">
+          <div className="bg-[#EAE2D5] border border-[#B69764] text-[#241B16] px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-sm animate-fadeIn">
             <CheckCircle size={16} className="text-[#493326]" />
             <span>{feedback}</span>
           </div>
         )}
 
         {/* Database Stats Cards Grid */}
-        <section className="grid grid-cols-3 gap-2.5">
-          <div className="bg-[#FCFAF7] border border-[#DFD6C9] rounded-2xl p-3 shadow-sm flex flex-col justify-between">
+        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          <div className="bg-[#FCFAF7] border border-[#DDD1C0] rounded-2xl p-4 shadow-sm flex flex-col justify-between hover:border-[#B69764] transition-colors">
             <div className="flex items-center justify-between text-[#8A7569]">
-              <Package size={16} />
-              <span className="text-[10px] uppercase font-bold text-[#493326]">Products</span>
+              <Package size={18} />
+              <span className="text-[10px] uppercase font-bold text-[#493326] tracking-wider">Total Models</span>
             </div>
-            <div className="mt-2">
-              <span className="text-xl font-serif font-bold text-[#241B16]">
-                {stats?.totalProducts ?? 0}
+            <div className="mt-3">
+              <span className="text-2xl sm:text-3xl font-serif font-bold text-[#241B16]">
+                {stats?.totalProducts ?? products.length}
               </span>
-              <span className="text-[9.5px] text-[#8A7569] block mt-0.5">
-                ({stats?.publishedProducts ?? 0} published)
+              <span className="text-[11px] text-[#8A7569] block mt-0.5">
+                ({stats?.publishedProducts ?? products.filter(p => p.isPublished).length} live on site)
               </span>
             </div>
           </div>
 
-          <div className="bg-[#FCFAF7] border border-[#DFD6C9] rounded-2xl p-3 shadow-sm flex flex-col justify-between">
+          <div className="bg-[#FCFAF7] border border-[#DDD1C0] rounded-2xl p-4 shadow-sm flex flex-col justify-between hover:border-[#B69764] transition-colors">
             <div className="flex items-center justify-between text-[#8A7569]">
-              <Layers size={16} />
-              <span className="text-[10px] uppercase font-bold text-[#493326]">Categories</span>
+              <Eye size={18} />
+              <span className="text-[10px] uppercase font-bold text-[#493326] tracking-wider">Published</span>
             </div>
-            <div className="mt-2">
-              <span className="text-xl font-serif font-bold text-[#241B16]">
-                {stats?.totalCategories ?? 0}
+            <div className="mt-3">
+              <span className="text-2xl sm:text-3xl font-serif font-bold text-green-700">
+                {stats?.publishedProducts ?? products.filter(p => p.isPublished).length}
               </span>
-              <span className="text-[9.5px] text-[#8A7569] block mt-0.5">Active categories</span>
+              <span className="text-[11px] text-[#8A7569] block mt-0.5">Available for buyers</span>
             </div>
           </div>
 
-          <div className="bg-[#FCFAF7] border border-[#DFD6C9] rounded-2xl p-3 shadow-sm flex flex-col justify-between">
+          <div className="bg-[#FCFAF7] border border-[#DDD1C0] rounded-2xl p-4 shadow-sm flex flex-col justify-between hover:border-[#B69764] transition-colors">
             <div className="flex items-center justify-between text-[#8A7569]">
-              <ImageIcon size={16} />
-              <span className="text-[10px] uppercase font-bold text-[#493326]">Photos</span>
+              <Layers size={18} />
+              <span className="text-[10px] uppercase font-bold text-[#493326] tracking-wider">Categories</span>
             </div>
-            <div className="mt-2">
-              <span className="text-xl font-serif font-bold text-[#241B16]">
+            <div className="mt-3">
+              <span className="text-2xl sm:text-3xl font-serif font-bold text-[#241B16]">
+                {stats?.totalCategories ?? 8}
+              </span>
+              <Link to="/admin/categories" className="text-[11px] text-[#B69764] hover:underline block mt-0.5">
+                Manage categories →
+              </Link>
+            </div>
+          </div>
+
+          <div className="bg-[#FCFAF7] border border-[#DDD1C0] rounded-2xl p-4 shadow-sm flex flex-col justify-between hover:border-[#B69764] transition-colors">
+            <div className="flex items-center justify-between text-[#8A7569]">
+              <ImageIcon size={18} />
+              <span className="text-[10px] uppercase font-bold text-[#493326] tracking-wider">Media Assets</span>
+            </div>
+            <div className="mt-3">
+              <span className="text-2xl sm:text-3xl font-serif font-bold text-[#241B16]">
                 {stats?.totalImages ?? 0}
               </span>
-              <span className="text-[9.5px] text-[#8A7569] block mt-0.5">Product assets</span>
+              <Link to="/admin/media" className="text-[11px] text-[#B69764] hover:underline block mt-0.5">
+                Open Media Library →
+              </Link>
             </div>
           </div>
         </section>
 
-        {/* Action Header */}
-        <div className="flex items-center justify-between pt-2">
+        {/* Action Header & Search */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
           <div>
-            <h2 className="font-serif text-base font-bold text-[#241B16]">Furniture Models</h2>
-            <p className="text-[10.5px] text-[#7A675B]">Manage catalog publication & availability</p>
+            <h2 className="font-serif text-lg sm:text-xl font-bold text-[#241B16]">
+              Furniture Collection Catalog
+            </h2>
+            <p className="text-xs text-[#7A675B]">
+              Add, update, publish and manage pieces in your public catalog
+            </p>
           </div>
-          <button
-            onClick={() => navigate('/admin/products/new')}
-            className="bg-[#493326] hover:bg-[#38251C] text-[#F7F3EC] px-3.5 py-1.5 rounded-full text-xs font-serif font-medium flex items-center gap-1.5 shadow-sm transition-all"
-          >
-            <Plus size={15} />
-            <span>Add Model</span>
-          </button>
+          <div className="flex items-center gap-2.5">
+            <div className="relative min-w-[200px] flex-1 sm:flex-initial">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8A7569]" />
+              <input
+                type="text"
+                placeholder="Search models..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-white border border-[#DDD1C0] rounded-xl pl-8 pr-3 py-1.5 text-xs text-[#241B16] focus:outline-none focus:border-[#493326]"
+              />
+            </div>
+            <button
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+                queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
+              }}
+              className="p-2 rounded-xl border border-[#DDD1C0] bg-white text-[#493326] hover:bg-[#FAF7F2] transition-colors"
+              title="Refresh catalog"
+            >
+              <RefreshCw size={15} />
+            </button>
+            <Link
+              to="/admin/products/new"
+              className="bg-[#493326] hover:bg-[#34241A] text-[#F7F3EC] px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+            >
+              <Plus size={15} />
+              <span>Add Furniture</span>
+            </Link>
+          </div>
         </div>
 
-        {/* Product Management Table/Cards */}
-        <section className="space-y-2">
+        {/* Product Management Grid / Table */}
+        <section className="space-y-3">
           {productsQuery.isLoading ? (
-            <div className="py-8 text-center text-xs text-[#8A7569] font-serif">
+            <div className="py-12 text-center text-xs text-[#8A7569] font-serif">
               Loading models from database...
             </div>
           ) : productsQuery.isError ? (
@@ -214,113 +266,114 @@ export const AdminDashboardPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => productsQuery.refetch()}
-                className="mt-2 underline"
+                className="mt-2 underline font-semibold"
               >
                 Try again
               </button>
             </div>
-          ) : products.length === 0 ? (
-            <div className="py-8 text-center text-xs text-[#8A7569] font-serif">
-              No products found in the database.
+          ) : filteredProducts.length === 0 ? (
+            <div className="py-12 text-center text-xs text-[#8A7569] font-serif bg-white rounded-2xl border border-[#DDD1C0] p-8">
+              {searchTerm ? `No furniture models matching "${searchTerm}"` : 'No products found in the database.'}
             </div>
           ) : (
-            products.map((p) => {
-              const displayImg = p.images?.[0]?.url || p.images?.[0]?.filePath;
-              const imageCount = p.images?.length ?? 0;
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {filteredProducts.map((p) => {
+                const displayImg = p.images?.[0]?.url || p.images?.[0]?.filePath;
+                const imageCount = p.images?.length ?? 0;
 
-              return (
-                <div
-                  key={p.id}
-                  className="bg-[#FCFAF7] border border-[#DDD1C0] rounded-2xl p-3 flex items-center justify-between gap-3 shadow-sm hover:shadow transition-all"
-                >
-                  {displayImg ? (
-                    <img
-                      src={displayImg}
-                      alt={p.name}
-                      className="w-14 h-14 rounded-xl object-cover border border-[#DFD5C6] flex-shrink-0"
-                    />
-                  ) : (
-                    <div className="w-14 h-14 rounded-xl border border-[#DFD5C6] flex items-center justify-center text-[#8A7569] flex-shrink-0">
-                      <ImageIcon size={18} aria-label="No product photo" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-serif text-xs font-bold text-[#241B16] truncate">
-                        {p.name}
-                      </h3>
-                      <span
-                        className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase ${
-                          p.isPublished
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}
-                      >
-                        {p.isPublished ? 'Published' : 'Draft'}
+                return (
+                  <div
+                    key={p.id}
+                    className="bg-[#FCFAF7] border border-[#DDD1C0] rounded-2xl p-4 flex items-center justify-between gap-3.5 shadow-sm hover:shadow-md hover:border-[#B69764] transition-all"
+                  >
+                    {displayImg ? (
+                      <img
+                        src={displayImg}
+                        alt={p.name}
+                        className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover border border-[#DFD5C6] flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl border border-[#DFD5C6] bg-[#FAF7F2] flex items-center justify-center text-[#8A7569] flex-shrink-0">
+                        <ImageIcon size={20} aria-label="No photo" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-serif text-sm font-bold text-[#241B16] truncate">
+                          {p.name}
+                        </h3>
+                        <span
+                          className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase flex-shrink-0 ${
+                            p.isPublished
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {p.isPublished ? 'Live' : 'Draft'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-mono text-[#8A7569] block mt-0.5">
+                        {p.modelCode} • {p.category?.name || 'Solid Wood'}
+                      </span>
+                      <span className="text-[10px] text-[#695446] block truncate mt-0.5">
+                        {p.material || 'Solid Teak Wood'}
+                      </span>
+                      <span className={`text-[10px] block mt-0.5 ${imageCount === 0 ? 'text-amber-800 font-semibold' : 'text-[#7A675B]'}`}>
+                        {imageCount} {imageCount === 1 ? 'photo' : 'photos'}
                       </span>
                     </div>
-                    <span className="text-[9.5px] font-mono text-[#8A7569] block mt-0.5">
-                      Code: {p.modelCode} | Category: {p.category?.name || 'Solid Wood'}
-                    </span>
-                    <span className="text-[9px] text-[#695446] block truncate mt-0.5">
-                      {p.material || 'Solid Teak Wood'}
-                    </span>
-                    <span className={`text-[9px] block mt-0.5 ${imageCount === 0 ? 'text-amber-800' : 'text-[#695446]'}`}>
-                      Gallery: {imageCount} {imageCount === 1 ? 'image' : 'images'}
-                    </span>
-                  </div>
 
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Link
-                      to={`/admin/products/${encodeURIComponent(p.id)}/edit`}
-                      className="p-1.5 rounded-lg border border-[#C8A77D] text-[#493326] hover:bg-[#F2ECE1]"
-                      title="Edit product and gallery"
-                      aria-label={`Edit ${p.name}`}
-                    >
-                      <Pencil size={15} />
-                    </Link>
-                    {/* Toggle publish button */}
-                    <button
-                      onClick={() =>
-                        togglePublishMutation.mutate({
-                          id: p.id,
-                          isPublished: !p.isPublished,
-                        })
-                      }
-                      className={`p-1.5 rounded-lg border transition-all ${
-                        p.isPublished
-                          ? 'border-[#C8A77D] text-[#493326] hover:bg-[#F2ECE1]'
-                          : 'border-gray-300 text-gray-500 hover:bg-gray-100'
-                      }`}
-                      title={p.isPublished ? 'Unpublish model' : 'Publish model'}
-                      disabled={togglePublishMutation.isPending}
-                    >
-                      {p.isPublished ? <Eye size={15} /> : <EyeOff size={15} />}
-                    </button>
-
-                    {/* Delete button */}
-                    <button
-                      onClick={() => {
-                        if (confirm(`Are you sure you want to delete ${p.name}?`)) {
-                          deleteProductMutation.mutate({
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <Link
+                        to={`/admin/products/${encodeURIComponent(p.id)}/edit`}
+                        className="p-2 rounded-xl border border-[#C8A77D] text-[#493326] hover:bg-[#F2ECE1] transition-colors"
+                        title="Edit product and gallery"
+                        aria-label={`Edit ${p.name}`}
+                      >
+                        <Pencil size={15} />
+                      </Link>
+                      {/* Toggle publish button */}
+                      <button
+                        onClick={() =>
+                          togglePublishMutation.mutate({
                             id: p.id,
-                            imagePaths: (p.images?.map(img => img.filePath || img.url).filter(Boolean) as string[]) || [],
-                          });
+                            isPublished: !p.isPublished,
+                          })
                         }
-                      }}
-                      className="p-1.5 text-[#8A7569] hover:text-red-700 transition-colors"
-                      title="Delete model"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                        className={`p-2 rounded-xl border transition-all ${
+                          p.isPublished
+                            ? 'border-[#C8A77D] text-[#493326] hover:bg-[#F2ECE1]'
+                            : 'border-gray-300 text-gray-500 hover:bg-gray-100'
+                        }`}
+                        title={p.isPublished ? 'Unpublish model' : 'Publish model'}
+                        disabled={togglePublishMutation.isPending}
+                      >
+                        {p.isPublished ? <Eye size={15} /> : <EyeOff size={15} />}
+                      </button>
+
+                      {/* Delete button */}
+                      <button
+                        onClick={() => {
+                          if (confirm(`Are you sure you want to delete ${p.name}?`)) {
+                            deleteProductMutation.mutate({
+                              id: p.id,
+                              imagePaths: (p.images?.map(img => img.filePath || img.url).filter(Boolean) as string[]) || [],
+                            });
+                          }
+                        }}
+                        className="p-2 rounded-xl text-[#8A7569] hover:text-red-700 hover:bg-red-50 transition-colors"
+                        title="Delete model"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </section>
       </main>
-
     </div>
   );
 };

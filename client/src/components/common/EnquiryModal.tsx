@@ -36,16 +36,20 @@ export const EnquiryModal: React.FC = () => {
           <X size={20} />
         </button>
 
-        {/* Header */}
-        <div className="flex items-center gap-2.5 mb-4">
-          <div className="w-9 h-9 rounded-full bg-[#25D366]/15 text-[#25D366] flex items-center justify-center flex-shrink-0">
-            <MessageSquare size={20} />
+        {/* Header with Pure White Logo */}
+        <div className="flex items-center justify-between gap-3 mb-4 pr-6">
+          <div className="bg-white px-2.5 py-1 rounded-lg border border-[#EAE2D5] shadow-sm">
+            <img
+              src="/assets/annamalai-logo.png"
+              alt="Annamalai Furniture"
+              className="h-6 w-auto object-contain"
+            />
           </div>
-          <div>
-            <h3 className="font-serif text-base font-bold text-[#241B16]">
+          <div className="text-right">
+            <h3 className="font-serif text-sm font-bold text-[#241B16]">
               WhatsApp Enquiry
             </h3>
-            <p className="text-[11px] text-[#7A675B]">
+            <p className="text-[10px] text-[#7A675B]">
               {products.length} {products.length === 1 ? 'item' : 'items'} selected
             </p>
           </div>
