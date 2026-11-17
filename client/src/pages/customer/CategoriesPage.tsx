@@ -4,12 +4,16 @@ import { useQuery } from '@tanstack/react-query';
 import { Header } from '../../components/common/Header';
 import { Footer } from '../../components/common/Footer';
 import { Armchair, Bed, UtensilsCrossed, DoorClosed, Tv, Sparkles, Archive, Disc } from 'lucide-react';
-import { api } from '../../services/api';
+import { api, DEFAULT_CATEGORIES } from '../../services/api';
 import { Category } from '../../types';
 
 export const CategoriesPage: React.FC = () => {
   const navigate = useNavigate();
-  const categoriesQuery = useQuery({ queryKey: ['categories'], queryFn: api.getCategories });
+  const categoriesQuery = useQuery({
+    queryKey: ['categories'],
+    queryFn: api.getCategories,
+    initialData: DEFAULT_CATEGORIES,
+  });
   const iconBySlug: Record<string, typeof Armchair> = {
     sofas: Armchair,
     beds: Bed,

@@ -21,13 +21,17 @@ import { Header } from '../../components/common/Header';
 import { Footer } from '../../components/common/Footer';
 import { SHOP_MAP_URL } from '../../constants/links';
 import { useShortlist } from '../../context/ShortlistContext';
-import { api } from '../../services/api';
+import { api, DEFAULT_CATEGORIES } from '../../services/api';
 import { Category, Product } from '../../types';
 
 export const FeaturedCollectionsPage: React.FC = () => {
   const navigate = useNavigate();
   const { openEnquiryModal } = useShortlist();
-  const categoriesQuery = useQuery({ queryKey: ['categories'], queryFn: api.getCategories });
+  const categoriesQuery = useQuery({
+    queryKey: ['categories'],
+    queryFn: api.getCategories,
+    initialData: DEFAULT_CATEGORIES,
+  });
   const featuredProductsQuery = useQuery({ queryKey: ['featured-products'], queryFn: api.getFeaturedProducts });
   const categoryIcons: Record<string, React.ReactNode> = {
     sofas: <Sofa size={14} />,

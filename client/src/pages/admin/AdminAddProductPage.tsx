@@ -18,7 +18,7 @@ import {
   Save,
   Check,
 } from 'lucide-react';
-import { api } from '../../services/api';
+import { api, DEFAULT_CATEGORIES } from '../../services/api';
 import { Category, ProductImage } from '../../types';
 
 const MAX_IMAGES_PER_UPLOAD = 20;
@@ -31,7 +31,7 @@ export const AdminAddProductPage: React.FC = () => {
 
   const [name, setName] = useState('');
   const [modelCode, setModelCode] = useState('');
-  const [categoryId, setCategoryId] = useState('');
+  const [categoryId, setCategoryId] = useState(DEFAULT_CATEGORIES[0]?.id || '');
   const [description, setDescription] = useState('');
   const [material, setMaterial] = useState('Solid Teak Wood');
   const [length, setLength] = useState('');
@@ -60,9 +60,10 @@ export const AdminAddProductPage: React.FC = () => {
     refetchInterval: false,
   });
 
-  const { data: categories = [] } = useQuery<Category[]>({
+  const { data: categories = DEFAULT_CATEGORIES } = useQuery<Category[]>({
     queryKey: ['admin-categories'],
     queryFn: api.getAdminCategories,
+    initialData: DEFAULT_CATEGORIES,
   });
 
   useEffect(() => {

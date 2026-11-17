@@ -5,12 +5,16 @@ import { Header } from '../../components/common/Header';
 import { Footer } from '../../components/common/Footer';
 import { WhatsAppBanner } from '../../components/common/WhatsAppBanner';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../../services/api';
+import { api, DEFAULT_CATEGORIES } from '../../services/api';
 import { Category } from '../../types';
 
 export const HomePage: React.FC = () => {
   const navigate = useNavigate();
-  const categoriesQuery = useQuery({ queryKey: ['categories'], queryFn: api.getCategories });
+  const categoriesQuery = useQuery({
+    queryKey: ['categories'],
+    queryFn: api.getCategories,
+    initialData: DEFAULT_CATEGORIES,
+  });
   const featuredProductsQuery = useQuery({ queryKey: ['featured-products'], queryFn: api.getFeaturedProducts });
 
   // Hero Carousel State & Auto-rotation
